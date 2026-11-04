@@ -36,6 +36,7 @@
   // ------------------------------------------------------------- 표시 도우미
   const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const today = () => C.todayStr();
+  const heroDate = () => { const d = new Date(); return d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + '일월화수목금토'[d.getDay()] + '요일'; };
   const fmt = (n, unit) => (n === null || n === undefined ? '-' : n + (unit || ''));
   function trendHtml(t) {
     if (t === null || t === undefined) return '<span class="muted">-</span>';
@@ -45,8 +46,13 @@
   }
   const bar = (rate, cls) => '<div class="bar ' + (cls || '') + '"><span style="width:' + Math.max(0, Math.min(100, rate || 0)) + '%"></span></div>';
   const alertBadges = list => list.map(a => '<span class="badge ' + a.level + '">' + esc(a.text) + '</span>').join('');
-  const stat = (label, value, unit, sub) =>
-    '<div class="card stat"><div class="label">' + label + '</div><div class="value">' + value + (value !== '-' && unit ? '<small>' + unit + '</small>' : '') + '</div>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>';
+  const icon = (name, cls) => '<svg class="ic' + (cls ? ' ' + cls : '') + '" aria-hidden="true"><use href="#i-' + name + '"/></svg>';
+  const stat = (label, value, unit, sub, ic, tone) =>
+    '<div class="card stat' + (tone ? ' tone-' + tone : '') + '"><div class="stat-top"><span class="label">' + label + '</span>' + (ic ? '<span class="icon">' + icon(ic) + '</span>' : '') + '</div>' +
+    '<div class="value">' + value + (value !== '-' && unit ? '<small>' + unit + '</small>' : '') + '</div>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>';
+  const initial = name => esc(String(name || '?').trim().charAt(0));
+  const avatar = (s, lg) => '<span class="avatar' + (C.schoolOf(s.grade) === 'elem' ? ' elem' : '') + (lg ? ' lg' : '') + '" aria-hidden="true">' + initial(s.name) + '</span>';
+  const progressCell = rate => '<div class="progress-cell">' + bar(rate) + '<span>' + rate + '%</span></div>';
 
   let toastTimer;
   function toast(msg) {
@@ -86,19 +92,21 @@
     return doing ? doing.id : '';
   }
 
+  let chartSeq = 0;
   function lineChart(list) {
     if (!list.length) return '<p class="empty">평가를 기록하면 성적 추이 그래프가 그려집니다.</p>';
     const data = list.slice(-12);
-    const W = 640, H = 220, L = 34, R = 18, T = 20, B = 32, iw = W - L - R, ih = H - T - B;
+    const W = 640, H = 220, L = 34, R = 18, T = 22, B = 32, iw = W - L - R, ih = H - T - B;
     const x = i => L + (data.length === 1 ? iw / 2 : i * iw / (data.length - 1));
     const y = v => T + ih - v / 100 * ih;
-    let svg = '';
+    const gid = 'chartFill' + (++chartSeq);
+    let svg = '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1"><stop class="fill-stop" offset="0" stop-opacity=".28"/><stop class="fill-stop" offset="1" stop-opacity="0"/></linearGradient></defs>';
     [0, 25, 50, 75, 100].forEach(v => {
       svg += '<line class="grid-line" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '"/>';
       svg += '<text class="axis-label" x="' + (L - 8) + '" y="' + (y(v) + 4) + '" text-anchor="end">' + v + '</text>';
     });
     const pts = data.map((d, i) => x(i).toFixed(1) + ',' + y(d.pct).toFixed(1));
-    svg += '<path class="area" d="M' + pts.join(' L') + ' L' + x(data.length - 1) + ',' + (T + ih) + ' L' + x(0) + ',' + (T + ih) + ' Z"/>';
+    svg += '<path class="area" style="fill:url(#' + gid + ')" d="M' + pts.join(' L') + ' L' + x(data.length - 1) + ',' + (T + ih) + ' L' + x(0) + ',' + (T + ih) + ' Z"/>';
     svg += '<path class="line" d="M' + pts.join(' L') + '"/>';
     data.forEach((d, i) => {
       svg += '<circle class="dot" cx="' + x(i) + '" cy="' + y(d.pct) + '" r="4.5"><title>' + esc(d.date + ' ' + d.type + ' ' + d.pct + '점') + '</title></circle>';
@@ -261,10 +269,12 @@
 
   // ------------------------------------------------------------- 화면: 대시보드
   function emptyHero() {
-    return '<div class="card hero-empty"><h2>OK수학에 오신 것을 환영합니다</h2>' +
-      '<p>학생을 등록하고 진도·평가·오답·수업 기록을 쌓으면<br>학생별 취약 단원 분석과 학부모 리포트가 자동으로 만들어집니다.</p>' +
-      '<div class="row-actions"><button class="btn primary" data-action="add-student">+ 첫 학생 추가</button>' +
-      '<button class="btn" data-action="load-sample">샘플 데이터로 둘러보기</button></div></div>';
+    return '<div class="card hero-empty"><div class="illust">' + icon('users') + '</div><h2>OK수학에 오신 것을 환영합니다</h2>' +
+      '<p>학생을 등록하고 진도·평가·오답·수업 기록을 쌓으면 학생별 취약 단원 분석과 학부모 리포트가 자동으로 만들어집니다.</p>' +
+      '<div class="row-actions"><button class="btn primary" data-action="add-student">' + icon('plus') + '첫 학생 추가</button>' +
+      '<button class="btn" data-action="load-sample">샘플 데이터로 둘러보기</button></div>' +
+      '<ul class="feature-list"><li><b>초1 ~ 중3 진도</b>2022 개정 단원별 상태와 이해도</li>' +
+      '<li><b>자동 분석</b>취약 단원 · 성적 하락 알림</li><li><b>학부모 리포트</b>문자 복사 · PDF 저장</li></ul></div>';
   }
 
   function renderDashboard() {
@@ -274,26 +284,27 @@
       return;
     }
     const attention = d.attention.length
-      ? '<ul class="weak-list">' + d.attention.map(r =>
-        '<li class="clickable" data-href="#/student/' + r.student.id + '" tabindex="0"><span><b>' + esc(r.student.name) + '</b> <span class="muted small">' + GL(r.student.grade) + '</span></span>' +
+      ? '<ul class="weak-list">' + d.attention.map((r, i) =>
+        '<li class="clickable" data-href="#/student/' + r.student.id + '" tabindex="0"><span class="who"><span class="rank">' + (i + 1) + '</span>' + avatar(r.student) + esc(r.student.name) + ' <span class="muted small">' + GL(r.student.grade) + '</span></span>' +
         '<span class="alerts" style="margin:0">' + alertBadges(r.alerts) + '</span></li>').join('') + '</ul>'
       : '<p class="empty">지금은 특별히 관리가 필요한 학생이 없습니다.</p>';
     const rows = d.rows.slice().sort((a, b) => b.attention - a.attention || a.student.name.localeCompare(b.student.name, 'ko')).map(r =>
       '<tr class="clickable" data-href="#/student/' + r.student.id + '" tabindex="0">' +
-      '<td><b>' + esc(r.student.name) + '</b></td><td>' + GL(r.student.grade) + '</td>' +
-      '<td><div style="display:flex;gap:8px;align-items:center">' + bar(r.progress.rate) + '<span class="small">' + r.progress.rate + '%</span></div></td>' +
+      '<td><span class="name-cell">' + avatar(r.student) + esc(r.student.name) + '</span></td><td>' + gradeBadge(r.student.grade) + '</td>' +
+      '<td>' + progressCell(r.progress.rate) + '</td>' +
       '<td>' + fmt(r.tests.recentAvg, '점') + '</td><td>' + trendHtml(r.tests.trend) + '</td>' +
       '<td>' + (r.wrongs.unresolved ? '<span class="badge mid">' + r.wrongs.unresolved + '</span>' : '<span class="badge ok">0</span>') + '</td>' +
       '<td class="hide-sm muted small">' + (r.last || '-') + '</td></tr>').join('');
     app.innerHTML =
-      '<div class="page-head"><div><h1>대시보드</h1><p>' + today() + ' 기준 · 학생 ' + d.count + '명</p></div>' +
-      '<button class="btn primary" data-action="add-student">+ 학생 추가</button></div>' +
+      '<section class="hero"><div><span class="hero-date">' + heroDate() + '</span><h1>오늘의 학습 관리</h1>' +
+      '<p>학생 ' + d.count + '명 중 <b>' + d.attention.length + '명</b>에게 관심이 필요해요.' + (d.unresolved ? ' 미해결 오답이 ' + d.unresolved + '문항 남아 있습니다.' : '') + '</p></div>' +
+      '<div class="row-actions"><button class="btn" data-action="add-student">' + icon('plus') + '학생 추가</button><a class="btn glass" href="#/students">학생 목록</a></div></section>' +
       '<div class="grid cols-4">' +
-      stat('관리 학생', d.count, '명') +
-      stat('평균 진도율', fmt(d.avgProgress), '%', '현재 학년 과정 기준') +
-      stat('최근 평균 점수', fmt(d.avgRecent), '점', '학생별 최근 3회 평균') +
-      stat('미해결 오답', d.unresolved, '문항', '전체 학생 합계') + '</div>' +
-      '<div class="card"><div class="card-head"><h2>관리가 필요한 학생 (' + d.attention.length + ')</h2><span class="muted small">성적 하락 · 60점 미만 · 결석 · 과제 · 오답 누적 기준</span></div>' + attention + '</div>' +
+      stat('관리 학생', d.count, '명', '초등 ' + d.rows.filter(r => C.schoolOf(r.student.grade) === 'elem').length + ' · 중등 ' + d.rows.filter(r => C.schoolOf(r.student.grade) === 'middle').length, 'users', 'violet') +
+      stat('평균 진도율', fmt(d.avgProgress), '%', '현재 학년 과정 기준', 'target', 'green') +
+      stat('최근 평균 점수', fmt(d.avgRecent), '점', '학생별 최근 3회 평균', 'chart') +
+      stat('미해결 오답', d.unresolved, '문항', '전체 학생 합계', 'book', 'orange') + '</div>' +
+      '<div class="card"><div class="card-head"><h2>' + icon('alert') + '관리가 필요한 학생 <span class="count">' + d.attention.length + '</span></h2><span class="muted small">성적 하락 · 60점 미만 · 결석 · 과제 · 오답 누적 기준</span></div>' + attention + '</div>' +
       '<div class="card"><div class="card-head"><h2>학생별 현황</h2></div><div class="table-wrap"><table>' +
       '<thead><tr><th>이름</th><th>학년</th><th>진도율</th><th>최근 평균</th><th>추세</th><th>미해결 오답</th><th class="hide-sm">마지막 기록</th></tr></thead>' +
       '<tbody>' + rows + '</tbody></table></div></div>';
@@ -304,9 +315,9 @@
   function renderStudents() {
     app.innerHTML =
       '<div class="page-head"><div><h1>학생 관리</h1><p>등록 학생 ' + db.students.length + '명</p></div>' +
-      '<div class="toolbar"><input type="search" id="q" placeholder="이름·학교 검색" aria-label="학생 검색" value="' + esc(filter.q) + '">' +
+      '<div class="toolbar"><label class="search">' + icon('search') + '<input type="search" id="q" placeholder="이름·학교 검색" aria-label="학생 검색" value="' + esc(filter.q) + '"></label>' +
       '<select id="gradeFilter" aria-label="학년 필터"><option value="">전체 학년</option>' + gradeOptions(filter.grade, true) + '</select>' +
-      '<button class="btn primary" data-action="add-student">+ 학생 추가</button></div></div><div id="studentList"></div>';
+      '<button class="btn primary" data-action="add-student">' + icon('plus') + '학생 추가</button></div></div><div id="studentList"></div>';
     $('#q').addEventListener('input', e => { filter.q = e.target.value; renderStudentList(); });
     $('#gradeFilter').addEventListener('change', e => { filter.grade = e.target.value; renderStudentList(); });
     renderStudentList();
@@ -322,9 +333,8 @@
     box.innerHTML = '<div class="student-cards">' + list.map(s => {
       const pg = C.progressSummary(s), ts = C.testStats(s), ws = C.wrongStats(s), al = C.alerts(s, today());
       return '<a class="card student-card" href="#/student/' + s.id + '">' +
-        '<div class="top"><span class="name">' + esc(s.name) + '</span>' + gradeBadge(s.grade) + '</div>' +
-        '<dl class="kv"><dt>학교</dt><dd>' + (esc(s.school) || '-') + '</dd>' +
-        '<dt>진도</dt><dd style="display:flex;gap:8px;align-items:center">' + bar(pg.rate) + '<span>' + pg.rate + '%</span></dd>' +
+        '<div class="top">' + avatar(s) + '<div><div class="name">' + esc(s.name) + '</div><div class="school">' + (esc(s.school) || '학교 미입력') + '</div></div>' + gradeBadge(s.grade) + '</div>' +
+        '<dl class="kv"><dt>진도</dt><dd>' + progressCell(pg.rate) + '</dd>' +
         '<dt>최근 평균</dt><dd>' + fmt(ts.recentAvg, '점') + ' ' + trendHtml(ts.trend) + '</dd>' +
         '<dt>미해결 오답</dt><dd>' + ws.unresolved + '문항</dd></dl>' +
         (al.length ? '<div class="alerts">' + alertBadges(al) + '</div>' : '') + '</a>';
@@ -339,9 +349,9 @@
     if (!TABS.some(t => t[0] === tab)) tab = 'overview';
     const meta = [s.school, s.goal && '목표: ' + s.goal, s.parentPhone && '보호자 ' + s.parentPhone].filter(Boolean).map(esc).join(' · ');
     app.innerHTML =
-      '<div class="page-head no-print"><a href="#/students" class="muted small">← 학생 목록</a></div>' +
-      '<div class="card no-print"><div class="profile"><div><h1>' + esc(s.name) + ' ' + gradeBadge(s.grade) + '</h1>' +
-      '<div class="meta">' + (meta || '추가 정보 없음') + '</div>' + (s.memo ? '<p class="small" style="white-space:pre-wrap;margin:8px 0 0">' + esc(s.memo) + '</p>' : '') + '</div>' +
+      '<div class="page-head no-print" style="margin-bottom:14px"><a href="#/students" class="back-link">' + icon('back') + '학생 목록</a></div>' +
+      '<div class="card no-print"><div class="profile"><div class="profile-main">' + avatar(s, true) + '<div><h1>' + esc(s.name) + ' ' + gradeBadge(s.grade) + '</h1>' +
+      '<div class="meta">' + (meta || '추가 정보 없음') + '</div>' + (s.memo ? '<p class="memo">' + esc(s.memo) + '</p>' : '') + '</div></div>' +
       '<div class="row-actions"><button class="btn" data-action="edit-student">정보 수정</button><button class="btn danger" data-action="delete-student">삭제</button></div></div></div>' +
       '<nav class="tabs no-print" aria-label="학생 메뉴">' + TABS.map(t => '<a href="#/student/' + s.id + '/' + t[0] + '" class="' + (t[0] === tab ? 'active' : '') + '">' + t[1] + '</a>').join('') + '</nav>' +
       '<div id="tabBody"></div>';
@@ -359,13 +369,13 @@
       const pg = C.progressSummary(s), ts = C.testStats(s), ws = C.wrongStats(s), ls = C.logStats(s);
       const weak = C.weakUnits(s, 5), al = C.alerts(s, today());
       return '<div class="grid cols-4">' +
-        stat('진도율 (' + GL(s.grade) + ')', pg.rate, '%', pg.done + '/' + pg.total + '단원 완료') +
-        stat('최근 3회 평균', fmt(ts.recentAvg), '점', '추세 ' + trendHtml(ts.trend)) +
-        stat('미해결 오답', ws.unresolved, '문항', '전체 ' + ws.total + '문항') +
-        stat('출석률', fmt(ls.attendRate), '%', '과제 수행률 ' + fmt(ls.homeworkRate, '%')) + '</div>' +
-        '<div class="grid cols-2" style="margin-top:16px">' +
-        '<div class="card"><div class="card-head"><h2>성적 추이</h2><span class="muted small">100점 환산</span></div>' + lineChart(ts.list) + '</div>' +
-        '<div class="card"><div class="card-head"><h2>보완이 필요한 단원</h2></div>' +
+        stat('진도율 (' + GL(s.grade) + ')', pg.rate, '%', pg.done + '/' + pg.total + '단원 완료', 'target', 'green') +
+        stat('최근 3회 평균', fmt(ts.recentAvg), '점', '추세 ' + trendHtml(ts.trend), 'chart') +
+        stat('미해결 오답', ws.unresolved, '문항', '전체 ' + ws.total + '문항', 'book', 'orange') +
+        stat('출석률', fmt(ls.attendRate), '%', '과제 수행률 ' + fmt(ls.homeworkRate, '%'), 'calendar', 'cyan') + '</div>' +
+        '<div class="grid cols-2 mt">' +
+        '<div class="card"><div class="card-head"><h2>' + icon('chart') + '성적 추이</h2><span class="muted small">100점 환산</span></div>' + lineChart(ts.list) + '</div>' +
+        '<div class="card"><div class="card-head"><h2>' + icon('target') + '보완이 필요한 단원</h2></div>' +
         (weak.length ? '<ul class="weak-list">' + weak.map(w => '<li><b>' + esc(w.label) + '</b><span class="muted small">' + esc(w.reasons.join(' · ')) + '</span></li>').join('') + '</ul>'
           : '<p class="empty">평가·오답·이해도를 기록하면 취약 단원을 찾아 드립니다.</p>') +
         (al.length ? '<h3 style="margin-top:16px">관리 알림</h3><div class="alerts">' + alertBadges(al) + '</div>' : '') + '</div></div>';
@@ -447,7 +457,7 @@
         '<div class="row-actions" style="margin-top:10px"><button class="btn" data-action="save-note">코멘트 저장</button>' +
         '<button class="btn" data-action="copy-report">문자용 텍스트 복사</button><button class="btn primary" data-action="print-report">인쇄 / PDF 저장</button></div></div>' +
         '<div class="card"><div class="report-paper" id="reportPaper">' +
-        '<header><div><div class="rp-brand">OK수학</div><h2>' + esc(s.name) + ' 학생 학습 리포트</h2></div><div class="muted small" style="text-align:right">' + r.date + '<br>' + GL(s.grade) + (s.school ? ' · ' + esc(s.school) : '') + '</div></header>' +
+        '<header><div><div class="rp-brand"><img src="icons/favicon.svg" alt="">OK수학</div><h2>' + esc(s.name) + ' 학생 학습 리포트</h2></div><div class="muted small" style="text-align:right">' + r.date + '<br>' + GL(s.grade) + (s.school ? ' · ' + esc(s.school) : '') + '</div></header>' +
         '<div class="report-kpis"><div><b>' + r.progress.rate + '%</b><span>진도율</span></div><div><b>' + fmt(r.tests.recentAvg) + '</b><span>최근 평균</span></div>' +
         '<div><b>' + r.wrongs.unresolved + '</b><span>미해결 오답</span></div><div><b>' + fmt(r.logs.attendRate, '%') + '</b><span>출석률</span></div></div>' +
         (r.tests.count ? lineChart(r.tests.list) : '') +
@@ -462,12 +472,13 @@
     const size = new Blob([localStorage.getItem(KEY) || '']).size;
     app.innerHTML =
       '<div class="page-head"><div><h1>데이터 관리</h1><p>모든 데이터는 서버 없이 이 브라우저(localStorage)에 저장됩니다.</p></div></div>' +
-      '<div class="grid cols-4">' + stat('학생', db.students.length, '명') + stat('누적 기록', records, '건', '평가·오답·수업') + stat('저장 용량', (size / 1024).toFixed(1), 'KB') + stat('오늘', today().slice(5).replace('-', '/'), '') + '</div>' +
-      '<div class="grid cols-2" style="margin-top:16px">' +
+      '<div class="grid cols-4">' + stat('학생', db.students.length, '명', '', 'users', 'violet') + stat('누적 기록', records, '건', '평가·오답·수업', 'file') + stat('저장 용량', (size / 1024).toFixed(1), 'KB', '이 기기 저장소', 'database', 'cyan') + stat('오늘', today().slice(5).replace('-', '/'), '', '', 'calendar', 'green') + '</div>' +
+      appCard() +
+      '<div class="grid cols-2 mt">' +
       '<div class="card"><h2>백업 / 복원</h2><p class="muted small">다른 컴퓨터로 옮기거나 브라우저 데이터를 지우기 전에 백업 파일(JSON)을 내려받으세요.</p>' +
       '<div class="row-actions"><button class="btn primary" data-action="export">백업 파일 내보내기</button><button class="btn" data-action="import">백업 파일 가져오기</button></div>' +
       '<input type="file" id="importFile" accept=".json,application/json" hidden></div>' +
-      '<div class="card"><h2>샘플 · 초기화</h2><p class="muted small">샘플 학생 4명을 추가해 기능을 둘러볼 수 있습니다. 초기화하면 모든 데이터가 삭제됩니다.</p>' +
+      '<div class="card"><h2>샘플 · 초기화</h2><p class="muted small">샘플 학생 6명(초등 2명 포함)을 추가해 기능을 둘러볼 수 있습니다. 초기화하면 모든 데이터가 삭제됩니다.</p>' +
       '<div class="row-actions"><button class="btn" data-action="load-sample">샘플 학생 추가</button><button class="btn danger" data-action="reset-all">전체 데이터 삭제</button></div></div></div>';
     $('#importFile').addEventListener('change', e => {
       const file = e.target.files[0];
@@ -478,6 +489,49 @@
         db = next; save(); toast('백업을 복원했습니다.'); route();
       }).catch(err => alert(err.message)).finally(() => { e.target.value = ''; });
     });
+  }
+
+  // ------------------------------------------------------------- 앱(PWA) · 화면 설정
+  const UI_KEY = 'okmath.ui';
+  let deferredInstall = null;
+  const isStandalone = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  function loadUI() { try { return JSON.parse(localStorage.getItem(UI_KEY) || '{}'); } catch (e) { return {}; } }
+  function saveUI(patch) { const ui = Object.assign(loadUI(), patch); try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch (e) { /* 무시 */ } return ui; }
+  function applyUI() {
+    const root = document.documentElement;
+    const ui = loadUI();
+    const dark = ui.theme ? ui.theme === 'dark' : !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+    root.dataset.theme = dark ? 'dark' : 'light';
+    root.dataset.size = ui.size === 'lg' ? 'lg' : 'md';
+    document.querySelectorAll('[data-action="toggle-theme"]').forEach(b => {
+      b.setAttribute('aria-pressed', String(dark));
+      const u = b.querySelector('.theme-ic use'); if (u) u.setAttribute('href', dark ? '#i-sun' : '#i-moon');
+      const l = b.querySelector('.theme-label'); if (l) l.textContent = dark ? '라이트 모드' : '다크 모드';
+      b.setAttribute('aria-label', dark ? '라이트 모드로 전환' : '다크 모드로 전환');
+    });
+    document.querySelectorAll('[data-action="toggle-size"]').forEach(b => b.setAttribute('aria-pressed', String(root.dataset.size === 'lg')));
+    document.querySelectorAll('[data-action="install-app"]').forEach(b => { b.hidden = !deferredInstall || isStandalone(); });
+  }
+  function appCard() {
+    const installed = isStandalone();
+    const how = isIOS()
+      ? '<ol class="install-steps"><li>Safari에서 이 페이지를 엽니다.</li><li>화면 아래 <b>공유</b> 버튼을 누릅니다.</li><li><b>홈 화면에 추가</b>를 선택합니다.</li></ol>'
+      : '<ol class="install-steps"><li>Chrome · Edge · 삼성 인터넷에서 아래 <b>앱 설치</b> 버튼을 누르거나</li><li>주소창 오른쪽의 설치 아이콘(또는 메뉴 → <b>앱 설치 / 홈 화면에 추가</b>)을 선택합니다.</li></ol>';
+    return '<div class="card mt"><div class="card-head"><h2>' + icon('phone') + '앱으로 사용하기</h2>' +
+      '<span class="app-status' + (installed ? '' : ' off') + '">' + (installed ? '앱으로 실행 중' : '브라우저에서 실행 중') + '</span></div>' +
+      '<p class="muted small" style="margin-top:0">휴대폰 홈 화면이나 PC에 설치하면 앱처럼 전체 화면으로 열리고, 인터넷이 없어도 사용할 수 있습니다. 데이터는 기기마다 따로 저장되므로 기기를 바꿀 때는 백업 파일을 이용하세요.</p>' +
+      (installed ? '' : how + (deferredInstall ? '<div class="row-actions mt"><button class="btn primary" data-action="install-app">' + icon('download') + '앱 설치</button></div>' : '')) + '</div>';
+  }
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; applyUI(); if (hashParts()[0] === 'data') route(); });
+  window.addEventListener('appinstalled', () => { deferredInstall = null; applyUI(); toast('OK수학 앱을 설치했습니다.'); });
+  if (window.matchMedia) {
+    const mq = matchMedia('(prefers-color-scheme: dark)');
+    const onScheme = () => { if (!loadUI().theme) applyUI(); };
+    if (mq.addEventListener) mq.addEventListener('change', onScheme);
+  }
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch(err => console.warn('서비스 워커 등록 실패', err)); });
   }
 
   // ------------------------------------------------------------- 이벤트
@@ -510,6 +564,13 @@
       copyText(text).then(() => toast('리포트 텍스트를 복사했습니다.'), () => toast('복사에 실패했습니다.'));
     }),
     'print-report': () => window.print(),
+    'toggle-theme': () => { saveUI({ theme: document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark' }); applyUI(); },
+    'toggle-size': () => { const lg = document.documentElement.dataset.size !== 'lg'; saveUI({ size: lg ? 'lg' : 'md' }); applyUI(); toast(lg ? '큰 글씨로 보여 드릴게요.' : '기본 글씨 크기로 돌아왔어요.'); },
+    'install-app': () => {
+      if (!deferredInstall) { location.hash = '#/data'; return; }
+      deferredInstall.prompt();
+      deferredInstall.userChoice.finally(() => { deferredInstall = null; applyUI(); if (hashParts()[0] === 'data') route(); });
+    },
     'export': () => {
       const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
       const a = document.createElement('a');
@@ -591,5 +652,6 @@
     document.title = (s ? s.name + ' · ' : '') + 'OK수학 · 초·중등 수학 개인별 관리';
   }
   window.addEventListener('hashchange', () => { route(); window.scrollTo(0, 0); });
+  applyUI();
   route();
 })();
