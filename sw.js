@@ -4,7 +4,7 @@
  * - 글꼴(CDN): 저장본 우선
  * 배포할 때 VERSION 을 올리면 예전 저장본이 정리됩니다.
  */
-const VERSION = 'okmath-v3';
+const VERSION = 'okmath-v4';
 const RUNTIME = 'okmath-runtime';
 const SHELL = [
   './', 'index.html', 'style.css', 'core.js', 'app.js', 'manifest.webmanifest',

@@ -183,11 +183,17 @@
         { name: 'grade', label: '학년', type: 'select', optionsHtml: gradeOptions(s.grade || 'm1') },
         { name: 'school', label: '학교', value: s.school, placeholder: 'OK초등학교 / OK중학교' },
         { name: 'goal', label: '학습 목표', value: s.goal, placeholder: '기말 90점' },
-        { name: 'phone', label: '학생 연락처', type: 'tel', value: s.phone },
-        { name: 'parentPhone', label: '보호자 연락처', type: 'tel', value: s.parentPhone },
+        { name: 'parentName', label: '보호자 이름 (문자 호칭)', value: s.parentName, placeholder: '예) 김정희 → “김정희님”' },
+        { name: 'parentPhone', label: '보호자 휴대폰', type: 'tel', value: s.parentPhone, placeholder: '010-1234-5678' },
+        { name: 'phone', label: '학생 휴대폰', type: 'tel', value: s.phone, placeholder: '없으면 비워 두세요' },
         { name: 'memo', label: '특이사항 메모', type: 'textarea', value: s.memo, placeholder: '학습 성향, 상담 내용 등' }
       ],
       onSubmit: v => {
+        [['parentPhone', '보호자 휴대폰'], ['phone', '학생 휴대폰']].forEach(([k, label]) => {
+          if (!v[k]) return;
+          if (!C.isMobile(v[k])) throw new Error(label + ' 번호를 확인해 주세요. 문자는 010 등 휴대폰 번호로만 보낼 수 있습니다.');
+          v[k] = C.formatPhone(v[k]);
+        });
         if (s.id) {
           replaceStudent(Object.assign({}, s, v));
           toast('학생 정보를 수정했습니다.');
@@ -304,7 +310,7 @@
       stat('평균 진도율', fmt(d.avgProgress), '%', '현재 학년 과정 기준', 'target', 'green') +
       stat('최근 평균 점수', fmt(d.avgRecent), '점', '학생별 최근 3회 평균', 'chart') +
       stat('미해결 오답', d.unresolved, '문항', '전체 학생 합계', 'book', 'orange') + '</div>' +
-      '<div class="card"><div class="card-head"><h2>' + icon('alert') + '관리가 필요한 학생 <span class="count">' + d.attention.length + '</span></h2><span class="muted small">성적 하락 · 60점 미만 · 결석 · 과제 · 오답 누적 기준</span></div>' + attention + '</div>' +
+      '<div class="card"><div class="card-head"><h2>' + icon('alert') + '관리가 필요한 학생 <span class="count">' + d.attention.length + '</span></h2>' + (d.attention.length ? '<button class="btn sm" data-action="msg-attention">' + icon('message') + '보호자에게 문자</button>' : '') + '<span class="muted small">성적 하락 · 60점 미만 · 결석 · 과제 · 오답 누적 기준</span></div>' + attention + '</div>' +
       '<div class="card"><div class="card-head"><h2>학생별 현황</h2></div><div class="table-wrap"><table>' +
       '<thead><tr><th>이름</th><th>학년</th><th>진도율</th><th>최근 평균</th><th>추세</th><th>미해결 오답</th><th class="hide-sm">마지막 기록</th></tr></thead>' +
       '<tbody>' + rows + '</tbody></table></div></div>';
@@ -347,12 +353,12 @@
 
   function renderStudent(s, tab) {
     if (!TABS.some(t => t[0] === tab)) tab = 'overview';
-    const meta = [s.school, s.goal && '목표: ' + s.goal, s.parentPhone && '보호자 ' + s.parentPhone].filter(Boolean).map(esc).join(' · ');
+    const meta = [s.school, s.goal && '목표: ' + s.goal, (s.parentName || s.parentPhone) && '보호자 ' + [s.parentName, s.parentPhone].filter(Boolean).join(' '), s.phone && '학생 ' + s.phone].filter(Boolean).map(esc).join(' · ');
     app.innerHTML =
       '<div class="page-head no-print" style="margin-bottom:14px"><a href="#/students" class="back-link">' + icon('back') + '학생 목록</a></div>' +
       '<div class="card no-print"><div class="profile"><div class="profile-main">' + avatar(s, true) + '<div><h1>' + esc(s.name) + ' ' + gradeBadge(s.grade) + '</h1>' +
       '<div class="meta">' + (meta || '추가 정보 없음') + '</div>' + (s.memo ? '<p class="memo">' + esc(s.memo) + '</p>' : '') + '</div></div>' +
-      '<div class="row-actions"><button class="btn" data-action="edit-student">정보 수정</button><button class="btn danger" data-action="delete-student">삭제</button></div></div></div>' +
+      '<div class="row-actions"><a class="btn primary" href="#/messages/to/' + s.id + '">' + icon('message') + '문자 보내기</a><button class="btn" data-action="edit-student">정보 수정</button><button class="btn danger" data-action="delete-student">삭제</button></div></div></div>' +
       '<nav class="tabs no-print" aria-label="학생 메뉴">' + TABS.map(t => '<a href="#/student/' + s.id + '/' + t[0] + '" class="' + (t[0] === tab ? 'active' : '') + '">' + t[1] + '</a>').join('') + '</nav>' +
       '<div id="tabBody"></div>';
     renderTab(s, tab);
@@ -455,7 +461,7 @@
         '<div class="card no-print"><div class="card-head"><h2>선생님 코멘트</h2><span class="muted small">리포트 마지막에 함께 표시됩니다</span></div>' +
         '<textarea id="reportNote" placeholder="예) 이번 달 수업 집중도가 많이 좋아졌습니다.">' + esc(s.reportNote) + '</textarea>' +
         '<div class="row-actions" style="margin-top:10px"><button class="btn" data-action="save-note">코멘트 저장</button>' +
-        '<button class="btn" data-action="copy-report">문자용 텍스트 복사</button><button class="btn primary" data-action="print-report">인쇄 / PDF 저장</button></div></div>' +
+        '<a class="btn" href="#/messages/to/' + s.id + '/tpl-report" data-action="report-sms">' + icon('message') + '학부모에게 문자</a><button class="btn" data-action="copy-report">문자용 텍스트 복사</button><button class="btn primary" data-action="print-report">인쇄 / PDF 저장</button></div></div>' +
         '<div class="card"><div class="report-paper" id="reportPaper">' +
         '<header><div><div class="rp-brand"><img src="icons/favicon.svg" alt="">OK수학</div><h2>' + esc(s.name) + ' 학생 학습 리포트</h2></div><div class="muted small" style="text-align:right">' + r.date + '<br>' + GL(s.grade) + (s.school ? ' · ' + esc(s.school) : '') + '</div></header>' +
         '<div class="report-kpis"><div><b>' + r.progress.rate + '%</b><span>진도율</span></div><div><b>' + fmt(r.tests.recentAvg) + '</b><span>최근 평균</span></div>' +
@@ -465,6 +471,231 @@
         '</div></div></div>';
     }
   };
+
+  // ------------------------------------------------------------- 화면: 문자 발송
+  const msg = { target: 'parent', selected: new Set(), q: '', grade: '', templateId: 'tpl-report', body: null, queue: null, single: null };
+  const ROLE_TARGETS = [['parent', '보호자'], ['student', '학생'], ['both', '보호자 + 학생']];
+  const allTemplates = () => C.MESSAGE_TEMPLATES.concat((db.templates || []).map(t => Object.assign({ custom: true, target: '' }, t)));
+  const findTemplate = id => allTemplates().find(t => t.id === id);
+  function setTemplate(id) {
+    const t = findTemplate(id);
+    if (!t) return;
+    msg.templateId = t.id;
+    msg.body = t.body;
+    if (t.target) msg.target = t.target;
+  }
+  const selectedStudents = () => db.students.filter(s => msg.selected.has(s.id));
+  const currentRecipients = () => C.buildRecipients(selectedStudents(), msg.target);
+  function msgPreset(ids, opts) {
+    opts = opts || {};
+    msg.selected = new Set(ids);
+    msg.single = opts.single || null;
+    msg.queue = null;
+    if (opts.target) msg.target = opts.target;
+    if (opts.template) setTemplate(opts.template);
+  }
+
+  function renderMessages(p) {
+    if (msg.body === null) setTemplate(msg.templateId);
+    if (p[1] === 'to' && p[2]) {
+      const s = findStudent(p[2]);
+      if (s && msg.single !== s.id) msgPreset([s.id], { single: s.id, template: p[3] || (msg.templateId) });
+    } else if (msg.single) {
+      msg.single = null;
+    }
+    const logCount = (db.messages || []).length;
+    const isLog = p[1] === 'log';
+    const single = msg.single ? findStudent(msg.single) : null;
+    const head = single
+      ? '<div class="page-head" style="margin-bottom:14px"><div><a href="#/student/' + single.id + '" class="back-link">' + icon('back') + esc(single.name) + ' 학생으로</a><h1 style="margin-top:6px">개별 문자 · ' + esc(single.name) + '</h1><p>' + esc(C.guardianName(single)) + ' 또는 학생에게 보낼 문자를 작성합니다.</p></div></div>'
+      : '<div class="page-head"><div><h1>문자 발송</h1><p>등록된 보호자·학생에게 통합 또는 개별 문자를 보냅니다.</p></div></div>';
+    const subtabs = '<nav class="tabs compact" aria-label="문자 메뉴"><a href="#/messages' + (single ? '/to/' + single.id : '') + '" class="' + (isLog ? '' : 'active') + '">' + (single ? '개별 문자' : '새 문자') + '</a><a href="#/messages/log" class="' + (isLog ? 'active' : '') + '">발송 기록 (' + logCount + ')</a></nav>';
+    if (isLog) { app.innerHTML = head + subtabs + renderMessageLog(); return; }
+    if (!db.students.length) { app.innerHTML = head + subtabs + emptyHero(); return; }
+
+    const tplChips = allTemplates().map(t =>
+      '<button type="button" class="chip' + (t.custom ? ' custom' : '') + (t.id === msg.templateId ? ' on' : '') + '" data-action="msg-template" data-id="' + esc(t.id) + '">' + esc(t.name) +
+      (t.custom ? '<span class="x" data-action="msg-del-template" data-id="' + esc(t.id) + '" title="템플릿 삭제" aria-label="' + esc(t.name) + ' 템플릿 삭제">×</span>' : '') + '</button>').join('');
+    const varChips = C.MESSAGE_VARS.map(v => '<button type="button" class="chip var" data-action="msg-var" data-var="' + v[0] + '" title="' + esc(v[1]) + '">{' + v[0] + '}</button>').join('');
+    const targetSeg = '<div class="seg lg" role="group" aria-label="받는 사람 종류">' + ROLE_TARGETS.map(r =>
+      '<button type="button" data-action="msg-target" data-value="' + r[0] + '" aria-pressed="' + (msg.target === r[0]) + '">' + r[1] + '</button>').join('') + '</div>';
+    const tools = single ? '<p class="small muted" style="margin:12px 0 8px">여러 학생에게 보내려면 <a href="#/messages" style="color:var(--primary-text);font-weight:700">통합 문자</a>에서 선택하세요.</p>'
+      : '<div class="rcp-tools"><label class="search">' + icon('search') + '<input type="search" id="msgQ" placeholder="이름·학교" aria-label="받는 사람 검색" value="' + esc(msg.q) + '"></label>' +
+        '<select id="msgGrade" aria-label="학년 필터"><option value="">전체 학년</option>' + gradeOptions(msg.grade, true) + '</select>' +
+        '<button type="button" class="btn sm" data-action="msg-select" data-value="all">보이는 학생 모두 선택</button><button type="button" class="btn sm" data-action="msg-select" data-value="attention">관리 필요 학생</button>' +
+        '<button type="button" class="btn sm ghost" data-action="msg-select" data-value="none">선택 해제</button></div>';
+
+    app.innerHTML = head + subtabs +
+      '<div class="msg-layout">' +
+      '<section class="card" aria-labelledby="rcpTitle"><div class="card-head" style="margin-bottom:12px"><h2 id="rcpTitle">' + icon('users') + '받는 사람</h2>' + targetSeg + '</div>' +
+      tools + '<div class="rcp-list" id="rcpList"></div><div class="rcp-summary" id="rcpSummary"></div></section>' +
+      '<section class="card" aria-labelledby="msgTitle"><div class="card-head" style="margin-bottom:12px"><h2 id="msgTitle">' + icon('message') + '메시지</h2><button type="button" class="btn sm ghost" data-action="msg-save-template">현재 내용을 템플릿으로 저장</button></div>' +
+      '<div class="tpl-chips" role="group" aria-label="템플릿">' + tplChips + '</div>' +
+      '<textarea id="msgBody" aria-label="문자 내용" placeholder="보낼 내용을 입력하세요.">' + esc(msg.body) + '</textarea>' +
+      '<div class="var-row"><span class="lbl">변수 넣기</span>' + varChips + '</div>' +
+      '<div class="msg-meta" id="msgMeta"></div>' +
+      '<div class="preview" id="msgPreview"></div>' +
+      '<div class="row-actions mt"><button type="button" class="btn primary" id="prepareBtn" data-action="msg-prepare">' + icon('send') + '발송 준비</button></div>' +
+      '<div class="notice">' + icon('alert') + '<span>서버를 거치지 않고 이 기기의 문자 앱(선생님 번호)으로 보냅니다. 통합 문자도 한 명씩 따로 발송되어 받는 사람끼리 번호가 보이지 않습니다. PC에서는 복사하거나 CSV로 내려받아 문자 서비스에 올리세요.</span></div>' +
+      '</section></div><div id="queueBox"></div>';
+
+    if (!single) {
+      $('#msgQ').addEventListener('input', e => { msg.q = e.target.value; renderRecipientList(); });
+      $('#msgGrade').addEventListener('change', e => { msg.grade = e.target.value; renderRecipientList(); });
+    }
+    $('#msgBody').addEventListener('input', e => { msg.body = e.target.value; updateCompose(); });
+    renderRecipientList();
+    if (msg.queue) renderQueue();
+  }
+
+  function visibleStudents() {
+    if (msg.single) return db.students.filter(s => s.id === msg.single);
+    const q = msg.q.trim().toLowerCase();
+    return db.students
+      .filter(s => (!msg.grade || s.grade === msg.grade || C.schoolOf(s.grade) === msg.grade) && (!q || (s.name + ' ' + s.school + ' ' + s.parentName).toLowerCase().includes(q)))
+      .sort((a, b) => C.gradeOrder(a.grade) - C.gradeOrder(b.grade) || a.name.localeCompare(b.name, 'ko'));
+  }
+  function phoneTag(label, raw) {
+    if (!C.normalizePhone(raw)) return '<span class="off">' + label + ' 번호 없음</span>';
+    if (!C.isMobile(raw)) return '<span class="off">' + label + ' ' + esc(C.formatPhone(raw)) + ' (휴대폰 아님)</span>';
+    return '<span>' + label + ' ' + esc(C.formatPhone(raw)) + '</span>';
+  }
+  function renderRecipientList() {
+    const box = $('#rcpList');
+    if (!box) return;
+    const list = visibleStudents();
+    box.innerHTML = list.length ? list.map(s => {
+      const on = msg.selected.has(s.id);
+      return '<label class="rcp' + (on ? ' on' : '') + '"><input type="checkbox" data-action="msg-check" value="' + s.id + '"' + (on ? ' checked' : '') + ' aria-label="' + esc(s.name) + ' 선택">' + avatar(s) +
+        '<div><div class="rcp-name">' + esc(s.name) + ' ' + gradeBadge(s.grade) + (s.parentName ? '<span class="muted small">보호자 ' + esc(s.parentName) + '</span>' : '') + '</div>' +
+        '<div class="rcp-phones">' + phoneTag('보호자', s.parentPhone) + phoneTag('학생', s.phone) + '</div></div></label>';
+    }).join('') : '<p class="empty">조건에 맞는 학생이 없습니다.</p>';
+    updateCompose();
+  }
+
+  function updateCompose() {
+    const summary = $('#rcpSummary');
+    if (!summary) return;
+    const rcps = currentRecipients();
+    const valid = rcps.filter(r => r.valid);
+    const skipped = rcps.length - valid.length;
+    summary.innerHTML = '<span>학생 <b>' + msg.selected.size + '</b>명 선택 · 발송 <b>' + valid.length + '</b>건</span>' +
+      (skipped ? '<span class="badge mid">번호 없음·오류 ' + skipped + '건 제외</span>' : '');
+    const body = msg.body || '';
+    const students = selectedStudents();
+    const vars = C.templateVars(body);
+    let maxBytes = C.smsBytes(body);
+    if (vars.length && valid.length) {
+      maxBytes = Math.max.apply(null, valid.slice(0, 60).map(r => C.smsBytes(C.renderTemplate(body, findStudent(r.studentId), { today: today() }))));
+    }
+    const type = C.smsType(maxBytes);
+    $('#msgMeta').innerHTML = '<span><span class="bytes">' + (vars.length && valid.length > 1 ? '최대 ' : '') + maxBytes + ' / ' + (type === 'SMS' ? 90 : 2000) + ' byte</span> · ' +
+      '<span class="badge ' + (type === 'SMS' ? 'ok' : type === 'LMS' ? '' : 'high') + '">' + (type === 'OVER' ? '길이 초과' : type) + '</span></span>' +
+      '<span>' + (vars.length ? '학생별 맞춤 변수 ' + vars.length + '개 적용' : '모두 같은 내용') + '</span>';
+    const first = valid[0] || (students[0] ? C.buildRecipients([students[0]], msg.target)[0] : null);
+    const pv = $('#msgPreview');
+    if (!first || !body.trim()) {
+      pv.innerHTML = '<div class="pv-head"><span>미리보기</span></div><p class="muted small" style="margin:0">' + (body.trim() ? '받는 사람을 선택하면 실제 내용을 미리 볼 수 있습니다.' : '내용을 입력하세요.') + '</p>';
+    } else {
+      const text = C.renderTemplate(body, findStudent(first.studentId), { today: today() });
+      pv.innerHTML = '<div class="pv-head"><span>미리보기 · ' + esc(first.who) + ' (' + first.roleLabel + ')' + (first.display ? ' ' + esc(first.display) : '') + '</span><span>' + C.smsBytes(text) + ' byte</span></div><div class="bubble">' + esc(text) + '</div>';
+    }
+    const btn = $('#prepareBtn');
+    btn.disabled = !valid.length || !body.trim() || type === 'OVER';
+    btn.lastChild.textContent = valid.length ? '발송 준비 (' + valid.length + '건)' : '발송 준비';
+    document.querySelectorAll('#rcpList .rcp').forEach(l => l.classList.toggle('on', l.querySelector('input').checked));
+  }
+
+  function prepareQueue() {
+    const body = msg.body || '';
+    const valid = currentRecipients().filter(r => r.valid);
+    if (!valid.length || !body.trim()) return;
+    const t = findTemplate(msg.templateId);
+    const items = valid.map(r => Object.assign({}, r, { text: C.renderTemplate(body, findStudent(r.studentId), { today: today() }), status: 'ready' }));
+    msg.queue = {
+      id: C.uid(), at: new Date().toISOString(), mode: msg.single ? 'single' : 'bulk',
+      template: t && t.body === body ? t.name : (t ? t.name + ' (수정)' : '직접 작성'), body: body, items: items, logged: false
+    };
+    renderQueue();
+    const qc = $('#queueBox'); if (qc && qc.scrollIntoView) qc.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function renderQueue() {
+    const box = $('#queueBox');
+    const q = msg.queue;
+    if (!box || !q) return;
+    const ios = isIOS();
+    const handled = q.items.filter(i => i.status !== 'ready').length;
+    const count = st => q.items.filter(i => i.status === st).length;
+    const nextKey = (q.items.find(i => i.status === 'ready') || {}).key;
+    const rows = q.items.map(it => {
+      const b = C.smsBytes(it.text), type = C.smsType(b);
+      const statusBadge = it.status === 'opened' ? '<span class="badge ok">문자 앱 열림</span>' : it.status === 'copied' ? '<span class="badge ok">복사함</span>' : it.status === 'skipped' ? '<span class="badge low">건너뜀</span>' : '';
+      return '<li class="q-item' + (it.key === nextKey ? ' next' : '') + (it.status === 'skipped' ? ' done skipped' : it.status !== 'ready' ? ' done' : '') + '">' +
+        '<div><div class="q-who">' + esc(it.who) + ' <span class="muted small">' + it.roleLabel + (it.role === 'parent' ? ' · ' + esc(it.name) : '') + '</span><span class="ph">' + esc(it.display) + '</span><span class="badge' + (type === 'SMS' ? ' ok' : '') + '">' + type + '</span>' + statusBadge + '</div>' +
+        '<details><summary>내용 보기</summary><pre>' + esc(it.text) + '</pre></details></div>' +
+        '<div class="q-actions"><a class="btn sm primary" href="' + esc(C.smsHref(it.phone, it.text, ios)) + '" data-action="q-open" data-keep-default data-key="' + esc(it.key) + '">' + icon('send') + '문자 앱 열기</a>' +
+        '<button type="button" class="btn sm" data-action="q-copy" data-key="' + esc(it.key) + '">' + icon('copy') + '복사</button>' +
+        (it.status === 'ready' ? '<button type="button" class="btn sm ghost" data-action="q-skip" data-key="' + esc(it.key) + '">건너뛰기</button>' : '') + '</div></li>';
+    }).join('');
+    const allDone = handled === q.items.length;
+    box.innerHTML = '<div class="card mt" id="queueCard"><div class="card-head"><h2>' + icon('send') + (q.mode === 'single' ? '개별 발송' : '통합 발송') + ' 대기열 <span class="count">' + q.items.length + '</span></h2>' +
+      '<div class="toolbar"><button type="button" class="btn sm" data-action="q-copy-numbers">' + icon('copy') + '번호 목록 복사</button><button type="button" class="btn sm" data-action="q-csv">' + icon('download') + 'CSV 내보내기</button>' +
+      '<button type="button" class="btn sm primary" data-action="q-finish">완료 · 기록 저장</button><button type="button" class="btn sm ghost" data-action="q-cancel">취소</button></div></div>' +
+      '<div class="progress-cell" style="max-width:520px">' + bar(q.items.length ? handled / q.items.length * 100 : 0, 'green') + '<span style="min-width:auto">' + handled + ' / ' + q.items.length + '</span></div>' +
+      '<p class="small muted" style="margin:8px 0 0">문자 앱 열림 ' + count('opened') + ' · 복사 ' + count('copied') + ' · 건너뜀 ' + count('skipped') + (allDone ? ' · <b style="color:var(--green)">모두 처리했습니다' + (q.logged ? ' (기록 저장됨)' : '') + '</b>' : '') + '</p>' +
+      '<div class="notice">' + icon('phone') + '<span><b>휴대폰:</b> [문자 앱 열기]를 누르면 번호와 내용이 채워진 문자 앱이 열립니다. 전송 후 돌아와 다음 사람을 누르세요. <b>PC:</b> [복사]해서 문자 서비스에 붙여넣거나 CSV를 올려 대량 발송하세요.</span></div>' +
+      '<ol class="queue">' + rows + '</ol></div>';
+    if (allDone && !q.logged) { saveMessageLog(); renderQueue(); }
+  }
+
+  function saveMessageLog() {
+    const q = msg.queue;
+    if (!q) return;
+    const count = st => q.items.filter(i => i.status === st).length;
+    const entry = {
+      id: q.id, at: q.at, mode: q.mode, template: q.template, body: q.body, total: q.items.length,
+      opened: count('opened'), copied: count('copied'), skipped: count('skipped'),
+      recipients: q.items.map(i => ({ name: i.role === 'parent' ? i.who + '(' + i.name + ')' : i.name, role: i.role, phone: i.phone, status: i.status }))
+    };
+    db.messages = (db.messages || []).filter(m => m.id !== entry.id);
+    db.messages.unshift(entry);
+    db.messages = db.messages.slice(0, 300);
+    q.logged = true;
+    save();
+  }
+
+  function renderMessageLog() {
+    const list = db.messages || [];
+    if (!list.length) return '<div class="card"><p class="empty">아직 발송 기록이 없습니다. 문자를 보내면 여기에 저장됩니다.</p></div>';
+    const fmtAt = iso => { const d = new Date(iso); return isNaN(d) ? iso : d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+    return '<div class="card"><div class="card-head"><h2>' + icon('history') + '발송 기록 <span class="count">' + list.length + '</span></h2><button type="button" class="btn sm danger" data-action="log-clear">기록 전체 삭제</button></div>' +
+      '<p class="small muted" style="margin-top:0">문자 앱을 열거나 복사한 기록입니다. 실제 전송 여부는 휴대폰 문자 앱에서 확인하세요.</p><div class="log-list">' +
+      list.map(m => '<div class="log-item"><div class="lg-head"><div class="lg-title"><span class="badge' + (m.mode === 'single' ? ' elem' : '') + '">' + (m.mode === 'single' ? '개별' : '통합') + '</span>' + esc(m.template || '직접 작성') + '<span class="muted small">' + fmtAt(m.at) + '</span></div>' +
+        '<button type="button" class="btn sm ghost" data-action="log-delete" data-id="' + esc(m.id) + '">삭제</button></div>' +
+        '<div class="lg-stats">대상 ' + m.total + '건 · 문자 앱 열림 ' + m.opened + ' · 복사 ' + m.copied + ' · 건너뜀 ' + m.skipped + '</div>' +
+        '<div class="lg-rcp">' + esc(m.recipients.slice(0, 8).map(r => r.name).join(', ')) + (m.recipients.length > 8 ? ' 외 ' + (m.recipients.length - 8) + '명' : '') + '</div>' +
+        '<details><summary>보낸 내용(템플릿)</summary><pre>' + esc(m.body) + '</pre></details></div>').join('') + '</div></div>';
+  }
+
+  function insertVar(name) {
+    const ta = $('#msgBody');
+    if (!ta) return;
+    const token = '{' + name + '}';
+    const s = ta.selectionStart == null ? ta.value.length : ta.selectionStart, e = ta.selectionEnd == null ? s : ta.selectionEnd;
+    ta.setRangeText(token, s, e, 'end');
+    ta.focus();
+    msg.body = ta.value;
+    updateCompose();
+  }
+  function queueItem(key) { return msg.queue ? msg.queue.items.find(i => i.key === key) : null; }
+  function downloadText(name, text, type) {
+    const blob = new Blob([text], { type: type });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
 
   // ------------------------------------------------------------- 화면: 데이터 관리
   function renderData() {
@@ -564,6 +795,87 @@
       copyText(text).then(() => toast('리포트 텍스트를 복사했습니다.'), () => toast('복사에 실패했습니다.'));
     }),
     'print-report': () => window.print(),
+    // 문자 발송
+    'report-sms': withStudent(s => {
+      const note = $('#reportNote');
+      if (note && note.value !== s.reportNote) replaceStudent(Object.assign({}, s, { reportNote: note.value }));
+      msgPreset([s.id], { single: s.id, target: 'parent', template: 'tpl-report' });
+      location.hash = '#/messages/to/' + s.id + '/tpl-report';
+    }),
+    'msg-attention': () => {
+      const ids = C.dashboard(db, today()).attention.map(r => r.student.id);
+      msgPreset(ids, { target: 'parent', template: 'tpl-score' });
+      location.hash = '#/messages';
+    },
+    'msg-target': el => { msg.target = el.dataset.value; document.querySelectorAll('[data-action="msg-target"]').forEach(b => b.setAttribute('aria-pressed', String(b === el))); msg.queue = null; const qb = $('#queueBox'); if (qb) qb.innerHTML = ''; updateCompose(); },
+    'msg-template': el => {
+      const t = findTemplate(el.dataset.id);
+      if (!t) return;
+      const cur = findTemplate(msg.templateId);
+      if (msg.body && msg.body.trim() && (!cur || msg.body !== cur.body) && msg.body !== t.body && !confirm('작성 중인 내용을 “' + t.name + '” 템플릿으로 바꿀까요?')) return;
+      setTemplate(t.id); msg.queue = null; route();
+    },
+    'msg-del-template': el => {
+      const t = findTemplate(el.dataset.id);
+      if (!t || !t.custom || !confirm('“' + t.name + '” 템플릿을 삭제할까요?')) return;
+      db.templates = db.templates.filter(x => x.id !== t.id); save();
+      if (msg.templateId === t.id) msg.templateId = '';
+      toast('템플릿을 삭제했습니다.'); route();
+    },
+    'msg-var': el => insertVar(el.dataset.var),
+    'msg-select': el => {
+      const v = el.dataset.value;
+      if (v === 'none') msg.selected = new Set();
+      else if (v === 'all') visibleStudents().forEach(s => msg.selected.add(s.id));
+      else if (v === 'attention') msg.selected = new Set(C.dashboard(db, today()).attention.map(r => r.student.id));
+      msg.queue = null; const qb = $('#queueBox'); if (qb) qb.innerHTML = '';
+      renderRecipientList();
+    },
+    'msg-save-template': () => {
+      const body = ($('#msgBody') || {}).value || '';
+      if (!body.trim()) { toast('저장할 내용을 먼저 입력하세요.'); return; }
+      openForm({
+        title: '템플릿으로 저장', submitLabel: '저장',
+        fields: [{ name: 'name', label: '템플릿 이름', required: true, full: true, placeholder: '예) 월말 상담 안내' }],
+        onSubmit: v => {
+          const t = { id: C.uid(), name: v.name.slice(0, 30), body: body };
+          db.templates = (db.templates || []).concat([t]); save();
+          msg.templateId = t.id; msg.body = body;
+          toast('“' + t.name + '” 템플릿을 저장했습니다.');
+        }
+      });
+    },
+    'msg-prepare': () => prepareQueue(),
+    'q-open': el => {
+      const it = queueItem(el.dataset.key);
+      if (!it) return;
+      if (it.status === 'ready') it.status = 'opened';
+      setTimeout(renderQueue, 350);
+    },
+    'q-copy': el => {
+      const it = queueItem(el.dataset.key);
+      if (!it) return;
+      copyText(it.text).then(() => { if (it.status === 'ready') it.status = 'copied'; toast(it.who + '님께 보낼 내용을 복사했습니다.'); renderQueue(); }, () => toast('복사에 실패했습니다.'));
+    },
+    'q-skip': el => { const it = queueItem(el.dataset.key); if (it) { it.status = 'skipped'; renderQueue(); } },
+    'q-copy-numbers': () => {
+      if (!msg.queue) return;
+      copyText(msg.queue.items.map(i => i.display).join('\n')).then(() => toast('번호 ' + msg.queue.items.length + '개를 복사했습니다.'));
+    },
+    'q-csv': () => {
+      if (!msg.queue) return;
+      downloadText('ok-math-문자-' + today() + '.csv', C.messagesCSV(msg.queue.items), 'text/csv;charset=utf-8');
+      toast('CSV 파일을 내려받았습니다. 문자 서비스의 대량 발송에 올리세요.');
+    },
+    'q-finish': () => {
+      if (!msg.queue) return;
+      saveMessageLog(); msg.queue = null;
+      toast('발송 기록을 저장했습니다.');
+      location.hash = '#/messages/log';
+    },
+    'q-cancel': () => { msg.queue = null; const qb = $('#queueBox'); if (qb) qb.innerHTML = ''; },
+    'log-delete': el => { db.messages = (db.messages || []).filter(m => m.id !== el.dataset.id); save(); route(); },
+    'log-clear': () => { if (!confirm('발송 기록을 모두 삭제할까요?')) return; db.messages = []; save(); route(); },
     'toggle-theme': () => { saveUI({ theme: document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark' }); applyUI(); },
     'toggle-size': () => { const lg = document.documentElement.dataset.size !== 'lg'; saveUI({ size: lg ? 'lg' : 'md' }); applyUI(); toast(lg ? '큰 글씨로 보여 드릴게요.' : '기본 글씨 크기로 돌아왔어요.'); },
     'install-app': () => {
@@ -612,6 +924,11 @@
       const cur = s.progress[el.dataset.unit] || { status: 'todo', level: 0 };
       setProgress(s, el.dataset.unit, Object.assign({}, cur, { level: Number(el.value) }));
     }),
+    'msg-check': el => {
+      if (el.checked) msg.selected.add(el.value); else msg.selected.delete(el.value);
+      if (msg.queue) { msg.queue = null; const qb = $('#queueBox'); if (qb) qb.innerHTML = ''; }
+      updateCompose();
+    },
     'toggle-wrong': withStudent((s, el) => {
       const wrongs = s.wrongs.map(w => (w.id === el.dataset.id ? Object.assign({}, w, { resolved: el.checked }) : w));
       replaceStudent(Object.assign({}, s, { wrongs: wrongs }));
@@ -623,7 +940,8 @@
   document.addEventListener('click', e => {
     const el = e.target.closest('[data-action]');
     if (el && ACTIONS[el.dataset.action] && el.tagName !== 'SELECT' && el.type !== 'checkbox') {
-      e.preventDefault();
+      if (!el.hasAttribute('data-keep-default')) e.preventDefault();
+      if (el.dataset.action === 'msg-del-template') e.stopPropagation();
       ACTIONS[el.dataset.action](el);
       return;
     }
@@ -648,6 +966,7 @@
     if (view === 'students') renderStudents();
     else if (s) renderStudent(s, p[2] || 'overview');
     else if (view === 'data') renderData();
+    else if (view === 'messages') renderMessages(p);
     else renderDashboard();
     document.title = (s ? s.name + ' · ' : '') + 'OK수학 · 초·중등 수학 개인별 관리';
   }

@@ -131,7 +131,7 @@
   // ---------------------------------------------------------------
   // 3. 데이터 모델 / 정규화
   // ---------------------------------------------------------------
-  function emptyDB() { return { app: 'ok-math', version: 1, students: [] }; }
+  function emptyDB() { return { app: 'ok-math', version: 1, students: [], templates: [], messages: [] }; }
 
   function createStudent(input) {
     input = input || {};
@@ -179,7 +179,7 @@
     }).sort(byDate);
     return {
       id: str(s.id, 40) || uid(), name: name, grade: grade,
-      school: str(s.school, 40), phone: str(s.phone, 30), parentPhone: str(s.parentPhone, 30),
+      school: str(s.school, 40), phone: str(s.phone, 30), parentName: str(s.parentName, 20), parentPhone: str(s.parentPhone, 30),
       goal: str(s.goal, 100), memo: str(s.memo, 1000), reportNote: str(s.reportNote, 1000),
       createdAt: isDate(s.createdAt) ? s.createdAt : todayStr(),
       progress: progress, tests: tests, wrongs: wrongs, logs: logs
@@ -199,7 +199,23 @@
       seen[s.id] = true;
       return s;
     });
-    return { app: 'ok-math', version: 1, students: students };
+    const templates = (Array.isArray(raw.templates) ? raw.templates : []).map(function (t) {
+      return { id: str(t && t.id, 40) || uid(), name: str(t && t.name, 30) || '내 템플릿', body: str(t && t.body, 2000) };
+    }).filter(function (t) { return t.body; });
+    const messages = (Array.isArray(raw.messages) ? raw.messages : []).slice(0, 300).map(function (m) {
+      m = m || {};
+      const num = function (v) { return Math.max(0, parseInt(v, 10) || 0); };
+      return {
+        id: str(m.id, 40) || uid(), at: str(m.at, 40) || new Date().toISOString(),
+        mode: m.mode === 'single' ? 'single' : 'bulk', template: str(m.template, 30), body: str(m.body, 2000),
+        total: num(m.total), opened: num(m.opened), copied: num(m.copied), skipped: num(m.skipped),
+        recipients: (Array.isArray(m.recipients) ? m.recipients : []).slice(0, 500).map(function (r) {
+          r = r || {};
+          return { name: str(r.name, 30), role: r.role === 'student' ? 'student' : 'parent', phone: str(r.phone, 20), status: pick(['ready', 'opened', 'copied', 'skipped'], r.status, 'ready') };
+        })
+      };
+    });
+    return { app: 'ok-math', version: 1, students: students, templates: templates, messages: messages };
   }
 
   // ---------------------------------------------------------------
@@ -486,13 +502,136 @@
       }
       return createStudent({
         id: 'sample-' + (idx + 1), name: p.name, grade: p.grade, school: p.school, goal: p.goal,
+        // 샘플 번호는 실제로 배정되지 않는 010-0000-XXXX 대역 사용
+        parentName: ['김정희', '이수진', '', '', '한미경', ''][idx] || '',
+        parentPhone: idx === 3 ? '' : '010-0000-' + String(1001 + idx),
+        phone: p.grade.charAt(0) === 'm' || idx === 4 ? '010-0000-' + String(2001 + idx) : '',
         createdAt: addDays(today, -60), progress: progress, tests: tests, wrongs: wrongs, logs: logs
       });
     });
-    return { app: 'ok-math', version: 1, students: students };
+    return { app: 'ok-math', version: 1, students: students, templates: [], messages: [] };
+  }
+
+  // ---------------------------------------------------------------
+  // 7. 문자 발송 (서버 없이: 기기 문자 앱 열기 / 복사 / CSV)
+  // ---------------------------------------------------------------
+  const MESSAGE_VARS = [
+    ['학생', '학생 이름'], ['보호자', '보호자 호칭'], ['학년', '학년'], ['학교', '학교'], ['날짜', '오늘 날짜'],
+    ['진도율', '현재 학년 진도율'], ['최근평균', '최근 3회 평균'], ['미해결오답', '미해결 오답 수'], ['보완단원', '보완이 필요한 단원'], ['리포트', '학습 리포트 전체']
+  ];
+  const MESSAGE_TEMPLATES = [
+    { id: 'tpl-report', name: '학습 리포트', target: 'parent', body: '[OK수학] {보호자}님, {학생} 학생의 학습 리포트를 보내드립니다.\n\n{리포트}' },
+    { id: 'tpl-score', name: '성적·진도 안내', target: 'parent', body: '[OK수학] {보호자}님, {학생} 학생 학습 현황입니다.\n- 진도율: {진도율}%\n- 최근 3회 평균: {최근평균}점\n- 보완 단원: {보완단원}' },
+    { id: 'tpl-notice', name: '공지사항', target: 'parent', body: '[OK수학] 안녕하세요, {보호자}님.\n\n(공지 내용을 입력해 주세요)\n\n감사합니다.' },
+    { id: 'tpl-exam', name: '시험 대비 보강', target: 'parent', body: '[OK수학] {보호자}님, {학생} 학생 시험 대비 보강 수업 안내드립니다.\n- 일시: \n- 내용: \n참석 여부를 회신 부탁드립니다.' },
+    { id: 'tpl-absent', name: '결석 안내', target: 'parent', body: '[OK수학] {보호자}님, {학생} 학생이 오늘({날짜}) 수업에 출석하지 않았습니다. 확인 부탁드립니다.' },
+    { id: 'tpl-homework', name: '과제 안내', target: 'student', body: '[OK수학] {학생}, 이번 주 과제 안내야.\n- 미해결 오답 {미해결오답}문항 다시 풀기\n- \n다음 수업 때 확인할게!' },
+    { id: 'tpl-cheer', name: '학생 격려', target: 'student', body: '{학생}, 오늘도 수고 많았어! {보완단원} 부분만 조금 더 연습하면 훨씬 좋아질 거야. 화이팅!' }
+  ];
+
+  /** 숫자만 남기고 +82 국가번호는 0으로 바꿈 */
+  function normalizePhone(p) {
+    let d = String(p == null ? '' : p).replace(/\D/g, '');
+    if (/^82(1\d{8,9})$/.test(d)) d = '0' + d.slice(2);
+    return d;
+  }
+  /** 문자를 받을 수 있는 휴대폰 번호인지 (010 등) */
+  function isMobile(p) { return /^01[016789]\d{7,8}$/.test(normalizePhone(p)); }
+  function formatPhone(p) {
+    const d = normalizePhone(p);
+    if (/^01\d{9}$/.test(d)) return d.replace(/^(\d{3})(\d{4})(\d{4})$/, '$1-$2-$3');
+    if (/^01\d{8}$/.test(d)) return d.replace(/^(\d{3})(\d{3})(\d{4})$/, '$1-$2-$3');
+    if (/^02\d{7,8}$/.test(d)) return d.replace(/^(02)(\d{3,4})(\d{4})$/, '$1-$2-$3');
+    if (/^0\d{9,10}$/.test(d)) return d.replace(/^(\d{3})(\d{3,4})(\d{4})$/, '$1-$2-$3');
+    return String(p == null ? '' : p).trim();
+  }
+  /** 문자 바이트 수 (통신사 기준: 영문·숫자·기호 1, 한글 등 2) */
+  function smsBytes(text) {
+    let n = 0;
+    const s = String(text || '');
+    for (let i = 0; i < s.length; i++) n += s.charCodeAt(i) <= 0x7f ? 1 : 2;
+    return n;
+  }
+  function smsType(bytes) { return bytes <= 90 ? 'SMS' : bytes <= 2000 ? 'LMS' : 'OVER'; }
+  function guardianName(student) { return student.parentName || (student.name + ' 학부모'); }
+
+  /** 템플릿의 {변수}를 학생 정보로 채움 */
+  function renderTemplate(body, student, opts) {
+    opts = opts || {};
+    const today = opts.today || todayStr();
+    const cache = {};
+    const get = function (key) {
+      if (key in cache) return cache[key];
+      let v = '';
+      switch (key) {
+        case '학생': v = student.name; break;
+        case '보호자': v = guardianName(student); break;
+        case '학년': v = gradeLabel(student.grade); break;
+        case '학교': v = student.school || ''; break;
+        case '날짜': v = Number(today.slice(5, 7)) + '월 ' + Number(today.slice(8, 10)) + '일'; break;
+        case '진도율': v = String(progressSummary(student).rate); break;
+        case '최근평균': { const r = testStats(student).recentAvg; v = r === null ? '-' : String(r); break; }
+        case '미해결오답': v = String(wrongStats(student).unresolved); break;
+        case '보완단원': { const w = weakUnits(student, 2); v = w.length ? w.map(function (x) { return x.name; }).join(', ') : '특별히 없음'; break; }
+        case '리포트': v = buildReport(student, today).sections.map(function (s) { return '■ ' + s.title + ': ' + s.text; }).join('\n'); break;
+        default: return null;
+      }
+      cache[key] = v;
+      return v;
+    };
+    return String(body || '').replace(/\{([^{}\s]{1,10})\}/g, function (m, key) {
+      const v = get(key);
+      return v === null ? m : v;
+    });
+  }
+  function templateVars(body) {
+    const names = MESSAGE_VARS.map(function (v) { return v[0]; });
+    const found = [];
+    String(body || '').replace(/\{([^{}\s]{1,10})\}/g, function (m, key) { if (names.indexOf(key) >= 0 && found.indexOf(key) < 0) found.push(key); return m; });
+    return found;
+  }
+
+  /** 선택한 학생들 → 수신자 목록. target: parent | student | both */
+  function buildRecipients(students, target) {
+    const roles = target === 'both' ? ['parent', 'student'] : [target === 'student' ? 'student' : 'parent'];
+    const out = [];
+    students.forEach(function (s) {
+      roles.forEach(function (role) {
+        const raw = role === 'parent' ? s.parentPhone : s.phone;
+        out.push({
+          key: s.id + ':' + role, studentId: s.id, name: s.name, role: role,
+          roleLabel: role === 'parent' ? '보호자' : '학생',
+          who: role === 'parent' ? guardianName(s) : s.name,
+          phone: normalizePhone(raw), display: formatPhone(raw), valid: isMobile(raw), missing: !normalizePhone(raw)
+        });
+      });
+    });
+    return out;
+  }
+
+  /** 문자 앱 열기 링크. iOS는 &body=, 그 외(안드로이드 등)는 ?body= */
+  function smsHref(phones, body, ios) {
+    const list = (Array.isArray(phones) ? phones : [phones]).map(normalizePhone).filter(Boolean);
+    const enc = encodeURIComponent(String(body || ''));
+    if (ios) return (list.length > 1 ? 'sms:/open?addresses=' + list.join(',') : 'sms:' + list.join(',')) + '&body=' + enc;
+    return 'sms:' + list.join(',') + '?body=' + enc;
+  }
+
+  /** 문자 서비스 대량 발송용 CSV (엑셀에서 한글이 깨지지 않도록 BOM 포함) */
+  function messagesCSV(items) {
+    const q = function (v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; };
+    const rows = [['이름', '구분', '전화번호', '메시지', '바이트', '유형']].concat(items.map(function (it) {
+      const b = smsBytes(it.text);
+      return [it.who || it.name, it.roleLabel || '', formatPhone(it.phone), it.text, b, smsType(b)];
+    }));
+    return '\uFEFF' + rows.map(function (r) { return r.map(q).join(','); }).join('\r\n') + '\r\n';
   }
 
   return {
+    MESSAGE_VARS: MESSAGE_VARS, MESSAGE_TEMPLATES: MESSAGE_TEMPLATES,
+    normalizePhone: normalizePhone, isMobile: isMobile, formatPhone: formatPhone, smsBytes: smsBytes, smsType: smsType,
+    guardianName: guardianName, renderTemplate: renderTemplate, templateVars: templateVars, buildRecipients: buildRecipients,
+    smsHref: smsHref, messagesCSV: messagesCSV,
     CURRICULUM: CURRICULUM, UNITS: UNITS, TEST_TYPES: TEST_TYPES, WRONG_TYPES: WRONG_TYPES,
     ATTENDANCE: ATTENDANCE, HOMEWORK: HOMEWORK, STATUS: STATUS,
     GRADES: GRADES, SCHOOL_LEVELS: SCHOOL_LEVELS,
