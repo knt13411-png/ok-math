@@ -120,7 +120,7 @@ textarea { min-height: 80px; resize: vertical; }
 .weak-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
 .weak-list li { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; background: #f8f9fd; border-radius: 10px; }
 
-.unit-row { display: grid; grid-template-columns: 1fr auto 130px; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.unit-row { display: grid; grid-template-columns: 1fr auto 185px; gap: 12px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
 .unit-row:last-child { border-bottom: 0; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
 .seg button { border: 0; background: #fff; padding: 5px 11px; font-size: 13px; cursor: pointer; border-right: 1px solid var(--line); }
