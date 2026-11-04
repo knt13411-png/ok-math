@@ -72,6 +72,7 @@ h3 { font-size: 15px; }
 .stat .sub { font-size: 13px; color: var(--muted); }
 
 .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--primary-soft); color: var(--primary); white-space: nowrap; }
+.badge.elem { background: #fff1e6; color: #d9620b; }
 .badge.high { background: var(--red-soft); color: var(--red); }
 .badge.mid { background: var(--orange-soft); color: var(--orange); }
 .badge.low { background: #eef0f5; color: var(--muted); }

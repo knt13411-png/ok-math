@@ -57,10 +57,26 @@
     toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
   }
 
-  function unitOptionsHtml(selected) {
+  const GL = g => C.gradeLabel(g);
+  const gradeBadge = g => '<span class="badge ' + (C.schoolOf(g) === 'elem' ? 'elem' : '') + '">' + GL(g) + '</span>';
+  function gradeOptions(selected, withGroups) {
+    return Object.keys(C.SCHOOL_LEVELS).map(level => {
+      const opts = C.GRADES.filter(g => g.school === level).map(g =>
+        '<option value="' + g.key + '"' + (g.key === selected ? ' selected' : '') + '>' + g.label + '</option>').join('');
+      return withGroups
+        ? '<option value="' + level + '"' + (level === selected ? ' selected' : '') + '>' + C.SCHOOL_LEVELS[level] + ' 전체</option>' + opts
+        : '<optgroup label="' + C.SCHOOL_LEVELS[level] + '">' + opts + '</optgroup>';
+    }).join('');
+  }
+  /** 현재 학년을 맨 앞에, 나머지는 초1 → 중3 순서 */
+  function gradesByDistance(cur) {
+    cur = C.normalizeGrade(cur);
+    return [cur].concat(C.GRADES.map(g => g.key).filter(k => k !== cur));
+  }
+  function unitOptionsHtml(selected, cur) {
     let html = '<option value="">단원 선택 안 함</option>';
-    [1, 2, 3].forEach(g => {
-      html += '<optgroup label="중' + g + '">' + C.unitsOfGrade(g).map(u =>
+    (cur ? gradesByDistance(cur) : C.GRADES.map(g => g.key)).forEach(g => {
+      html += '<optgroup label="' + GL(g) + '">' + C.unitsOfGrade(g).map(u =>
         '<option value="' + u.id + '"' + (u.id === selected ? ' selected' : '') + '>' + esc(u.name) + '</option>').join('') + '</optgroup>';
     });
     return html;
@@ -156,8 +172,8 @@
       title: s.id ? '학생 정보 수정' : '학생 추가',
       fields: [
         { name: 'name', label: '이름', value: s.name, required: true, placeholder: '홍길동' },
-        { name: 'grade', label: '학년', type: 'select', value: s.grade || 1, options: [[1, '중1'], [2, '중2'], [3, '중3']] },
-        { name: 'school', label: '학교', value: s.school, placeholder: 'OK중학교' },
+        { name: 'grade', label: '학년', type: 'select', optionsHtml: gradeOptions(s.grade || 'm1') },
+        { name: 'school', label: '학교', value: s.school, placeholder: 'OK초등학교 / OK중학교' },
         { name: 'goal', label: '학습 목표', value: s.goal, placeholder: '기말 90점' },
         { name: 'phone', label: '학생 연락처', type: 'tel', value: s.phone },
         { name: 'parentPhone', label: '보호자 연락처', type: 'tel', value: s.parentPhone },
@@ -184,7 +200,7 @@
       fields: (s, it) => [
         { name: 'date', label: '날짜', type: 'date', value: it.date || today(), required: true },
         { name: 'type', label: '평가 유형', type: 'select', value: it.type || '단원평가', options: C.TEST_TYPES },
-        { name: 'unitId', label: '단원', type: 'select', full: true, optionsHtml: unitOptionsHtml(it.id ? it.unitId : defaultUnit(s)) },
+        { name: 'unitId', label: '단원', type: 'select', full: true, optionsHtml: unitOptionsHtml(it.id ? it.unitId : defaultUnit(s), s.grade) },
         { name: 'score', label: '점수', type: 'number', value: it.score, required: true, min: 0, step: 'any' },
         { name: 'total', label: '만점', type: 'number', value: it.total || 100, required: true, min: 1, step: 'any' },
         { name: 'memo', label: '메모', type: 'textarea', value: it.memo }
@@ -201,7 +217,7 @@
       fields: (s, it) => [
         { name: 'date', label: '날짜', type: 'date', value: it.date || today(), required: true },
         { name: 'type', label: '오답 원인', type: 'select', value: it.type || '개념 부족', options: C.WRONG_TYPES },
-        { name: 'unitId', label: '단원', type: 'select', full: true, optionsHtml: unitOptionsHtml(it.id ? it.unitId : defaultUnit(s)) },
+        { name: 'unitId', label: '단원', type: 'select', full: true, optionsHtml: unitOptionsHtml(it.id ? it.unitId : defaultUnit(s), s.grade) },
         { name: 'source', label: '문제 출처', value: it.source, full: true, placeholder: '예) 교재 p.52 3번', required: true },
         { name: 'memo', label: '틀린 이유 / 바른 풀이 메모', type: 'textarea', value: it.memo },
         { name: 'resolved', label: '다시 풀어서 해결함', type: 'checkbox', value: it.resolved }
@@ -259,12 +275,12 @@
     }
     const attention = d.attention.length
       ? '<ul class="weak-list">' + d.attention.map(r =>
-        '<li class="clickable" data-href="#/student/' + r.student.id + '" tabindex="0"><span><b>' + esc(r.student.name) + '</b> <span class="muted small">중' + r.student.grade + '</span></span>' +
+        '<li class="clickable" data-href="#/student/' + r.student.id + '" tabindex="0"><span><b>' + esc(r.student.name) + '</b> <span class="muted small">' + GL(r.student.grade) + '</span></span>' +
         '<span class="alerts" style="margin:0">' + alertBadges(r.alerts) + '</span></li>').join('') + '</ul>'
       : '<p class="empty">지금은 특별히 관리가 필요한 학생이 없습니다.</p>';
     const rows = d.rows.slice().sort((a, b) => b.attention - a.attention || a.student.name.localeCompare(b.student.name, 'ko')).map(r =>
       '<tr class="clickable" data-href="#/student/' + r.student.id + '" tabindex="0">' +
-      '<td><b>' + esc(r.student.name) + '</b></td><td>중' + r.student.grade + '</td>' +
+      '<td><b>' + esc(r.student.name) + '</b></td><td>' + GL(r.student.grade) + '</td>' +
       '<td><div style="display:flex;gap:8px;align-items:center">' + bar(r.progress.rate) + '<span class="small">' + r.progress.rate + '%</span></div></td>' +
       '<td>' + fmt(r.tests.recentAvg, '점') + '</td><td>' + trendHtml(r.tests.trend) + '</td>' +
       '<td>' + (r.wrongs.unresolved ? '<span class="badge mid">' + r.wrongs.unresolved + '</span>' : '<span class="badge ok">0</span>') + '</td>' +
@@ -289,8 +305,7 @@
     app.innerHTML =
       '<div class="page-head"><div><h1>학생 관리</h1><p>등록 학생 ' + db.students.length + '명</p></div>' +
       '<div class="toolbar"><input type="search" id="q" placeholder="이름·학교 검색" aria-label="학생 검색" value="' + esc(filter.q) + '">' +
-      '<select id="gradeFilter" aria-label="학년 필터"><option value="">전체 학년</option>' +
-      [1, 2, 3].map(g => '<option value="' + g + '"' + (String(g) === filter.grade ? ' selected' : '') + '>중' + g + '</option>').join('') + '</select>' +
+      '<select id="gradeFilter" aria-label="학년 필터"><option value="">전체 학년</option>' + gradeOptions(filter.grade, true) + '</select>' +
       '<button class="btn primary" data-action="add-student">+ 학생 추가</button></div></div><div id="studentList"></div>';
     $('#q').addEventListener('input', e => { filter.q = e.target.value; renderStudentList(); });
     $('#gradeFilter').addEventListener('change', e => { filter.grade = e.target.value; renderStudentList(); });
@@ -299,15 +314,15 @@
   function renderStudentList() {
     const q = filter.q.trim().toLowerCase();
     const list = db.students
-      .filter(s => (!filter.grade || String(s.grade) === filter.grade) && (!q || (s.name + ' ' + s.school).toLowerCase().includes(q)))
-      .sort((a, b) => a.grade - b.grade || a.name.localeCompare(b.name, 'ko'));
+      .filter(s => (!filter.grade || s.grade === filter.grade || C.schoolOf(s.grade) === filter.grade) && (!q || (s.name + ' ' + s.school).toLowerCase().includes(q)))
+      .sort((a, b) => C.gradeOrder(a.grade) - C.gradeOrder(b.grade) || a.name.localeCompare(b.name, 'ko'));
     const box = $('#studentList');
     if (!db.students.length) { box.innerHTML = emptyHero(); return; }
     if (!list.length) { box.innerHTML = '<div class="card empty">검색 결과가 없습니다.</div>'; return; }
     box.innerHTML = '<div class="student-cards">' + list.map(s => {
       const pg = C.progressSummary(s), ts = C.testStats(s), ws = C.wrongStats(s), al = C.alerts(s, today());
       return '<a class="card student-card" href="#/student/' + s.id + '">' +
-        '<div class="top"><span class="name">' + esc(s.name) + '</span><span class="badge">중' + s.grade + '</span></div>' +
+        '<div class="top"><span class="name">' + esc(s.name) + '</span>' + gradeBadge(s.grade) + '</div>' +
         '<dl class="kv"><dt>학교</dt><dd>' + (esc(s.school) || '-') + '</dd>' +
         '<dt>진도</dt><dd style="display:flex;gap:8px;align-items:center">' + bar(pg.rate) + '<span>' + pg.rate + '%</span></dd>' +
         '<dt>최근 평균</dt><dd>' + fmt(ts.recentAvg, '점') + ' ' + trendHtml(ts.trend) + '</dd>' +
@@ -325,7 +340,7 @@
     const meta = [s.school, s.goal && '목표: ' + s.goal, s.parentPhone && '보호자 ' + s.parentPhone].filter(Boolean).map(esc).join(' · ');
     app.innerHTML =
       '<div class="page-head no-print"><a href="#/students" class="muted small">← 학생 목록</a></div>' +
-      '<div class="card no-print"><div class="profile"><div><h1>' + esc(s.name) + ' <span class="badge">중' + s.grade + '</span></h1>' +
+      '<div class="card no-print"><div class="profile"><div><h1>' + esc(s.name) + ' ' + gradeBadge(s.grade) + '</h1>' +
       '<div class="meta">' + (meta || '추가 정보 없음') + '</div>' + (s.memo ? '<p class="small" style="white-space:pre-wrap;margin:8px 0 0">' + esc(s.memo) + '</p>' : '') + '</div>' +
       '<div class="row-actions"><button class="btn" data-action="edit-student">정보 수정</button><button class="btn danger" data-action="delete-student">삭제</button></div></div></div>' +
       '<nav class="tabs no-print" aria-label="학생 메뉴">' + TABS.map(t => '<a href="#/student/' + s.id + '/' + t[0] + '" class="' + (t[0] === tab ? 'active' : '') + '">' + t[1] + '</a>').join('') + '</nav>' +
@@ -344,7 +359,7 @@
       const pg = C.progressSummary(s), ts = C.testStats(s), ws = C.wrongStats(s), ls = C.logStats(s);
       const weak = C.weakUnits(s, 5), al = C.alerts(s, today());
       return '<div class="grid cols-4">' +
-        stat('진도율 (중' + s.grade + ')', pg.rate, '%', pg.done + '/' + pg.total + '단원 완료') +
+        stat('진도율 (' + GL(s.grade) + ')', pg.rate, '%', pg.done + '/' + pg.total + '단원 완료') +
         stat('최근 3회 평균', fmt(ts.recentAvg), '점', '추세 ' + trendHtml(ts.trend)) +
         stat('미해결 오답', ws.unresolved, '문항', '전체 ' + ws.total + '문항') +
         stat('출석률', fmt(ls.attendRate), '%', '과제 수행률 ' + fmt(ls.homeworkRate, '%')) + '</div>' +
@@ -357,7 +372,7 @@
     },
 
     progress: s => {
-      const grades = [s.grade].concat([1, 2, 3].filter(g => g !== s.grade));
+      const grades = gradesByDistance(s.grade);
       return grades.map(g => {
         const pg = C.progressSummary(s, g);
         const rows = C.unitsOfGrade(g).map(u => {
@@ -369,11 +384,11 @@
             [1, 2, 3, 4, 5].map(n => '<option value="' + n + '"' + (p.level === n ? ' selected' : '') + '>이해도 ' + n + ' ' + '★'.repeat(n) + '</option>').join('') + '</select></div>';
         }).join('');
         if (g === s.grade) {
-          return '<div class="card"><div class="card-head"><h2>중' + g + ' 과정 <span class="muted small">현재 학년</span></h2>' +
+          return '<div class="card"><div class="card-head"><h2>' + GL(g) + ' 과정 <span class="muted small">현재 학년</span></h2>' +
             '<div style="display:flex;gap:10px;align-items:center;min-width:230px">' + bar(pg.rate, 'green') + '<span class="small">' + pg.done + '/' + pg.total + ' 완료 (' + pg.rate + '%)</span></div></div>' + rows + '</div>';
         }
-        return '<div class="card"><details class="grade-block" data-grade="' + g + '"><summary>중' + g + ' 과정 (선행·복습) · ' + pg.done + '/' + pg.total + ' 완료</summary>' + rows + '</details></div>';
-      }).join('') + '<p class="muted small">단원은 2022 개정 교육과정 중학교 수학 대단원 기준입니다. 이해도(1~5)가 2 이하인 단원은 취약 단원 분석에 반영됩니다.</p>';
+        return '<div class="card"><details class="grade-block" data-grade="' + g + '"><summary>' + GL(g) + ' 과정 (' + (C.gradeOrder(g) < C.gradeOrder(s.grade) ? '복습' : '선행') + ') · ' + pg.done + '/' + pg.total + ' 완료</summary>' + rows + '</details></div>';
+      }).join('') + '<p class="muted small">단원은 2022 개정 교육과정 기준 대표 단원입니다 (초등은 1학기 → 2학기 순, 교과서에 따라 단원명이 다를 수 있음). 이전 학년은 복습, 다음 학년은 선행으로 표시됩니다. 이해도(1~5)가 2 이하인 단원은 취약 단원 분석에 반영됩니다.</p>';
     },
 
     tests: s => {
@@ -432,7 +447,7 @@
         '<div class="row-actions" style="margin-top:10px"><button class="btn" data-action="save-note">코멘트 저장</button>' +
         '<button class="btn" data-action="copy-report">문자용 텍스트 복사</button><button class="btn primary" data-action="print-report">인쇄 / PDF 저장</button></div></div>' +
         '<div class="card"><div class="report-paper" id="reportPaper">' +
-        '<header><div><div class="rp-brand">OK수학</div><h2>' + esc(s.name) + ' 학생 학습 리포트</h2></div><div class="muted small" style="text-align:right">' + r.date + '<br>중' + s.grade + (s.school ? ' · ' + esc(s.school) : '') + '</div></header>' +
+        '<header><div><div class="rp-brand">OK수학</div><h2>' + esc(s.name) + ' 학생 학습 리포트</h2></div><div class="muted small" style="text-align:right">' + r.date + '<br>' + GL(s.grade) + (s.school ? ' · ' + esc(s.school) : '') + '</div></header>' +
         '<div class="report-kpis"><div><b>' + r.progress.rate + '%</b><span>진도율</span></div><div><b>' + fmt(r.tests.recentAvg) + '</b><span>최근 평균</span></div>' +
         '<div><b>' + r.wrongs.unresolved + '</b><span>미해결 오답</span></div><div><b>' + fmt(r.logs.attendRate, '%') + '</b><span>출석률</span></div></div>' +
         (r.tests.count ? lineChart(r.tests.list) : '') +
@@ -573,7 +588,7 @@
     else if (s) renderStudent(s, p[2] || 'overview');
     else if (view === 'data') renderData();
     else renderDashboard();
-    document.title = (s ? s.name + ' · ' : '') + 'OK수학 · 중등 수학 개인별 관리';
+    document.title = (s ? s.name + ' · ' : '') + 'OK수학 · 초·중등 수학 개인별 관리';
   }
   window.addEventListener('hashchange', () => { route(); window.scrollTo(0, 0); });
   route();

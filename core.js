@@ -11,29 +11,79 @@
   'use strict';
 
   // ---------------------------------------------------------------
-  // 1. 교육과정 (2022 개정 교육과정 중학교 수학 기준 대단원)
+  // 1. 교육과정 (2022 개정 교육과정 기준 대표 단원)
+  //    초등: 학기 순서대로 1학기 → 2학기 단원 (교과서 출판사마다 단원명이 조금 다를 수 있음)
+  //    중등: 대단원
+  //    학년 코드: e1~e6 = 초1~초6, m1~m3 = 중1~중3
   // ---------------------------------------------------------------
   const CURRICULUM = {
-    1: [
+    e1: [
+      '9까지의 수', '여러 가지 모양', '덧셈과 뺄셈', '비교하기', '50까지의 수',
+      '100까지의 수', '덧셈과 뺄셈 (1)', '모양과 시각', '덧셈과 뺄셈 (2)', '규칙 찾기', '덧셈과 뺄셈 (3)'
+    ],
+    e2: [
+      '세 자리 수', '여러 가지 도형', '덧셈과 뺄셈', '길이 재기', '분류하기', '곱셈',
+      '네 자리 수', '곱셈구구', '길이 재기 (m와 cm)', '시각과 시간', '표와 그래프', '규칙 찾기'
+    ],
+    e3: [
+      '덧셈과 뺄셈', '평면도형', '나눗셈', '곱셈', '길이와 시간', '분수와 소수',
+      '곱셈 (2)', '나눗셈 (2)', '원', '분수', '들이와 무게', '자료의 정리 (그림그래프)'
+    ],
+    e4: [
+      '큰 수', '각도', '곱셈과 나눗셈', '평면도형의 이동', '막대그래프', '규칙 찾기',
+      '분수의 덧셈과 뺄셈', '삼각형', '소수의 덧셈과 뺄셈', '사각형', '꺾은선그래프', '다각형'
+    ],
+    e5: [
+      '자연수의 혼합 계산', '약수와 배수', '규칙과 대응', '약분과 통분', '분수의 덧셈과 뺄셈', '다각형의 둘레와 넓이',
+      '수의 범위와 어림하기', '분수의 곱셈', '합동과 대칭', '소수의 곱셈', '직육면체', '평균과 가능성'
+    ],
+    e6: [
+      '분수의 나눗셈', '각기둥과 각뿔', '소수의 나눗셈', '비와 비율', '여러 가지 그래프', '직육면체의 부피와 겉넓이',
+      '분수의 나눗셈 (2)', '소수의 나눗셈 (2)', '공간과 입체', '비례식과 비례배분', '원의 넓이', '원기둥, 원뿔, 구'
+    ],
+    m1: [
       '소인수분해', '정수와 유리수', '문자의 사용과 식의 계산', '일차방정식',
       '좌표평면과 그래프', '기본 도형', '작도와 합동', '평면도형의 성질',
       '입체도형의 성질', '자료의 정리와 해석'
     ],
-    2: [
+    m2: [
       '유리수와 순환소수', '식의 계산', '일차부등식', '연립일차방정식',
       '일차함수와 그래프', '일차함수와 일차방정식의 관계', '삼각형의 성질',
       '사각형의 성질', '도형의 닮음', '피타고라스 정리', '경우의 수와 확률'
     ],
-    3: [
+    m3: [
       '제곱근과 실수', '다항식의 곱셈과 인수분해', '이차방정식', '이차함수와 그래프',
       '삼각비', '원의 성질', '대푯값과 산포도', '상관관계'
     ]
   };
 
+  const GRADES = ['e1', 'e2', 'e3', 'e4', 'e5', 'e6', 'm1', 'm2', 'm3'].map(function (key, i) {
+    const elem = key[0] === 'e';
+    return { key: key, order: i, school: elem ? 'elem' : 'middle', num: Number(key[1]), label: (elem ? '초' : '중') + key[1] };
+  });
+  const GRADE_MAP = {};
+  GRADES.forEach(function (g) { GRADE_MAP[g.key] = g; });
+  const SCHOOL_LEVELS = { elem: '초등', middle: '중등' };
+
+  /** 학년 코드 정규화. 예전 데이터의 숫자 학년(1~3)은 중1~중3으로 해석 */
+  function normalizeGrade(g) {
+    if (GRADE_MAP[g]) return g;
+    const s = String(g == null ? '' : g).trim();
+    if (GRADE_MAP[s.toLowerCase()]) return s.toLowerCase();
+    let m = /^(초|중)\s*([1-6])/.exec(s);
+    if (m && GRADE_MAP[(m[1] === '초' ? 'e' : 'm') + m[2]]) return (m[1] === '초' ? 'e' : 'm') + m[2];
+    const n = parseInt(s, 10);
+    if (n >= 1 && n <= 3) return 'm' + n;
+    return 'm1';
+  }
+  function gradeLabel(key) { const g = GRADE_MAP[normalizeGrade(key)]; return g.label; }
+  function gradeOrder(key) { return GRADE_MAP[normalizeGrade(key)].order; }
+  function schoolOf(key) { return GRADE_MAP[normalizeGrade(key)].school; }
+
   const UNITS = [];
-  Object.keys(CURRICULUM).forEach(function (g) {
-    CURRICULUM[g].forEach(function (name, i) {
-      UNITS.push({ id: 'm' + g + '-' + String(i + 1).padStart(2, '0'), grade: Number(g), name: name });
+  GRADES.forEach(function (g) {
+    CURRICULUM[g.key].forEach(function (name, i) {
+      UNITS.push({ id: g.key + '-' + String(i + 1).padStart(2, '0'), grade: g.key, name: name });
     });
   });
   const UNIT_MAP = {};
@@ -45,9 +95,9 @@
   const HOMEWORK = ['완료', '일부', '미완료', '없음'];
   const STATUS = { todo: '미시작', doing: '진행 중', done: '완료' };
 
-  function unitsOfGrade(grade) { return UNITS.filter(function (u) { return u.grade === Number(grade); }); }
+  function unitsOfGrade(grade) { grade = normalizeGrade(grade); return UNITS.filter(function (u) { return u.grade === grade; }); }
   function unitName(id) { return UNIT_MAP[id] ? UNIT_MAP[id].name : (id ? '(알 수 없는 단원)' : '-'); }
-  function unitLabel(id) { const u = UNIT_MAP[id]; return u ? '중' + u.grade + ' ' + u.name : '-'; }
+  function unitLabel(id) { const u = UNIT_MAP[id]; return u ? gradeLabel(u.grade) + ' ' + u.name : '-'; }
 
   // ---------------------------------------------------------------
   // 2. 유틸
@@ -92,7 +142,7 @@
     if (!s || typeof s !== 'object') throw new Error('학생 데이터 형식이 올바르지 않습니다.');
     const name = str(s.name, 30);
     if (!name) throw new Error('학생 이름이 비어 있습니다.');
-    const grade = Math.min(3, Math.max(1, parseInt(s.grade, 10) || 1));
+    const grade = normalizeGrade(s.grade);
     const progress = {};
     if (s.progress && typeof s.progress === 'object') {
       Object.keys(s.progress).forEach(function (k) {
@@ -156,7 +206,7 @@
   // 4. 분석
   // ---------------------------------------------------------------
   function progressSummary(student, grade) {
-    grade = grade || student.grade;
+    grade = normalizeGrade(grade || student.grade);
     const units = unitsOfGrade(grade);
     let done = 0, doing = 0;
     const doingNames = [];
@@ -332,7 +382,7 @@
     const weak = weakUnits(student, 3);
 
     const sections = [];
-    let prog = '중' + pg.grade + ' 과정 ' + pg.total + '단원 중 ' + pg.done + '단원 완료 (' + pg.rate + '%)';
+    let prog = gradeLabel(pg.grade) + ' 과정 ' + pg.total + '단원 중 ' + pg.done + '단원 완료 (' + pg.rate + '%)';
     if (pg.doingNames.length) prog += ', 진행 중: ' + pg.doingNames.join(', ');
     sections.push({ title: '진도', text: prog });
 
@@ -394,10 +444,12 @@
     today = today || todayStr();
     const rnd = seeded(20261104);
     const profiles = [
-      { name: '김민준', grade: 2, school: 'OK중학교', goal: '기말 90점', base: 78, slope: 2, done: 4, wrongBias: '계산 실수', absent: 0 },
-      { name: '이서연', grade: 1, school: '한빛중학교', goal: '수학 자신감 키우기', base: 88, slope: 0.5, done: 6, wrongBias: '문제 이해', absent: 0 },
-      { name: '박지호', grade: 3, school: 'OK중학교', goal: '고등 선행 준비', base: 74, slope: -3.5, done: 3, wrongBias: '개념 부족', absent: 2 },
-      { name: '최하은', grade: 2, school: '새솔중학교', goal: '기초 다지기', base: 55, slope: 1, done: 2, wrongBias: '개념 부족', absent: 1 }
+      { name: '김민준', grade: 'm2', school: 'OK중학교', goal: '기말 90점', base: 78, slope: 2, done: 4, wrongBias: '계산 실수', absent: 0 },
+      { name: '이서연', grade: 'm1', school: '한빛중학교', goal: '수학 자신감 키우기', base: 88, slope: 0.5, done: 6, wrongBias: '문제 이해', absent: 0 },
+      { name: '박지호', grade: 'm3', school: 'OK중학교', goal: '고등 선행 준비', base: 74, slope: -3.5, done: 3, wrongBias: '개념 부족', absent: 2 },
+      { name: '최하은', grade: 'm2', school: '새솔중학교', goal: '기초 다지기', base: 55, slope: 1, done: 2, wrongBias: '개념 부족', absent: 1 },
+      { name: '한지우', grade: 'e5', school: 'OK초등학교', goal: '분수 계산 정확도 높이기', base: 84, slope: 1.5, done: 5, wrongBias: '계산 실수', absent: 0 },
+      { name: '윤서아', grade: 'e3', school: '푸른초등학교', goal: '곱셈·나눗셈 기초 완성', base: 66, slope: -2.5, done: 3, wrongBias: '문제 이해', absent: 1 }
     ];
     const students = profiles.map(function (p, idx) {
       const units = unitsOfGrade(p.grade);
@@ -443,6 +495,8 @@
   return {
     CURRICULUM: CURRICULUM, UNITS: UNITS, TEST_TYPES: TEST_TYPES, WRONG_TYPES: WRONG_TYPES,
     ATTENDANCE: ATTENDANCE, HOMEWORK: HOMEWORK, STATUS: STATUS,
+    GRADES: GRADES, SCHOOL_LEVELS: SCHOOL_LEVELS,
+    normalizeGrade: normalizeGrade, gradeLabel: gradeLabel, gradeOrder: gradeOrder, schoolOf: schoolOf,
     unitsOfGrade: unitsOfGrade, unitName: unitName, unitLabel: unitLabel,
     uid: uid, pct: pct, todayStr: todayStr, addDays: addDays, daysBetween: daysBetween,
     emptyDB: emptyDB, createStudent: createStudent, normalizeStudent: normalizeStudent, normalizeDB: normalizeDB,
