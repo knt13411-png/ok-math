@@ -198,3 +198,80 @@ test('초등 학생: 진도·리포트·취약 단원', () => {
   assert.match(r.text, /초5 과정 12단원 중 1단원 완료 \(8%\), 진행 중: 약수와 배수/);
   assert.match(r.text, /약수와 배수 단원을 우선 복습/);
 });
+test('문자: 전화번호 정규화 · 휴대폰 판별 · 표시 형식', () => {
+  assert.equal(C.normalizePhone('010-1234-5678'), '01012345678');
+  assert.equal(C.normalizePhone('+82 10 1234 5678'), '01012345678');
+  assert.ok(C.isMobile('010 1234 5678'));
+  assert.ok(C.isMobile('011-123-4567'));
+  assert.ok(!C.isMobile('02-123-4567'), '유선 번호는 문자 불가');
+  assert.ok(!C.isMobile(''));
+  assert.equal(C.formatPhone('01012345678'), '010-1234-5678');
+  assert.equal(C.formatPhone('0221234567'), '02-2123-4567');
+  assert.equal(C.formatPhone('021234567'), '02-123-4567');
+  assert.equal(C.formatPhone('0311234567'), '031-123-4567');
+});
+
+test('문자: 바이트 계산과 SMS/LMS 구분', () => {
+  assert.equal(C.smsBytes('abc 123'), 7);
+  assert.equal(C.smsBytes('안녕'), 4);
+  assert.equal(C.smsBytes('[OK수학] 안내'), 13);
+  assert.equal(C.smsType(90), 'SMS');
+  assert.equal(C.smsType(91), 'LMS');
+  assert.equal(C.smsType(2001), 'OVER');
+});
+
+test('문자: 템플릿 변수 치환', () => {
+  const s = C.createStudent({
+    name: '김민준', grade: 'm2', school: 'OK중', parentName: '김정희',
+    progress: { 'm2-01': { status: 'done' }, 'm2-02': { status: 'doing' } },
+    tests: [{ date: '2026-10-01', unitId: 'm2-02', score: 64 }],
+    wrongs: [{ unitId: 'm2-02', type: '계산 실수' }]
+  });
+  const t = C.renderTemplate('{보호자}님, {학생}({학년}, {학교}) {날짜} 진도 {진도율}% 평균 {최근평균} 오답 {미해결오답} 보완 {보완단원} {없는변수}', s, { today: TODAY });
+  assert.equal(t, '김정희님, 김민준(중2, OK중) 11월 4일 진도 9% 평균 64 오답 1 보완 식의 계산 {없는변수}');
+  const noParent = C.createStudent({ name: '이서연', grade: 'e3' });
+  assert.equal(C.renderTemplate('{보호자}님 {최근평균} {보완단원}', noParent, { today: TODAY }), '이서연 학부모님 - 특별히 없음');
+  const rep = C.renderTemplate('{리포트}', s, { today: TODAY });
+  assert.match(rep, /^■ 진도: 중2 과정 11단원 중 1단원 완료/);
+  assert.ok(!rep.includes('학습 리포트 ('), '리포트 변수에는 제목 줄이 빠짐');
+  assert.deepEqual(C.templateVars('{학생} {학생} {보호자} {foo}'), ['학생', '보호자']);
+  C.MESSAGE_TEMPLATES.forEach(tp => assert.ok(C.templateVars(tp.body).length >= 0 && tp.body.length > 10, tp.name));
+});
+
+test('문자: 수신자 목록 (보호자/학생/둘 다, 번호 없음 처리)', () => {
+  const a = C.createStudent({ id: 'a', name: '가', parentPhone: '010-1111-2222', phone: '' });
+  const b = C.createStudent({ id: 'b', name: '나', parentPhone: '02-123-4567', phone: '01033334444' });
+  const p = C.buildRecipients([a, b], 'parent');
+  assert.deepEqual(p.map(r => [r.key, r.valid]), [['a:parent', true], ['b:parent', false]]);
+  assert.equal(p[0].display, '010-1111-2222');
+  assert.equal(p[0].who, '가 학부모');
+  const both = C.buildRecipients([a, b], 'both');
+  assert.equal(both.length, 4);
+  assert.deepEqual(both.filter(r => r.valid).map(r => r.key), ['a:parent', 'b:student']);
+  assert.ok(both.find(r => r.key === 'a:student').missing);
+});
+
+test('문자: 문자 앱 링크와 CSV', () => {
+  assert.equal(C.smsHref('010-1234-5678', '안녕 & 반가워', false), 'sms:01012345678?body=%EC%95%88%EB%85%95%20%26%20%EB%B0%98%EA%B0%80%EC%9B%8C');
+  assert.equal(C.smsHref(['01011112222'], 'hi', true), 'sms:01011112222&body=hi');
+  assert.equal(C.smsHref(['01011112222', '01033334444'], 'hi', true), 'sms:/open?addresses=01011112222,01033334444&body=hi');
+  const csv = C.messagesCSV([{ who: '김정희', roleLabel: '보호자', phone: '01012345678', text: '줄1\n"인용"' }]);
+  assert.ok(csv.startsWith('\uFEFF"이름","구분","전화번호","메시지","바이트","유형"\r\n'));
+  assert.ok(csv.includes('"김정희","보호자","010-1234-5678","줄1\n""인용""","10","SMS"'));
+});
+
+test('문자: 템플릿 · 발송 기록 백업 유지', () => {
+  const db = C.normalizeDB({
+    students: [{ id: 's', name: '가' }],
+    templates: [{ id: 't1', name: '내 공지', body: '내용' }, { name: '빈 것', body: '' }],
+    messages: [{ id: 'm1', at: '2026-11-04T10:00:00.000Z', mode: 'single', template: '공지사항', body: 'x', total: 2, opened: 1, skipped: 1, recipients: [{ name: '가', role: 'parent', phone: '01012345678', status: 'opened' }] }]
+  });
+  assert.deepEqual(db.templates, [{ id: 't1', name: '내 공지', body: '내용' }]);
+  assert.equal(db.messages[0].mode, 'single');
+  assert.equal(db.messages[0].opened, 1);
+  assert.equal(db.messages[0].recipients[0].status, 'opened');
+  const old = C.normalizeDB({ students: [] });
+  assert.deepEqual([old.templates, old.messages], [[], []], '예전 백업에는 빈 목록');
+  const sample = C.sampleDB(TODAY);
+  assert.equal(sample.students.filter(s => C.isMobile(s.parentPhone)).length, 5, '샘플 1명은 보호자 번호 없음');
+});
