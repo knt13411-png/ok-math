@@ -6,13 +6,17 @@ const C = require('../core.js');
 const TODAY = '2026-11-04';
 
 function student(extra) {
-  return C.createStudent(Object.assign({ name: '테스트', grade: 2 }, extra));
+  return C.createStudent(Object.assign({ name: '테스트', grade: 'm2' }, extra));
 }
 
 test('교육과정: 학년별 단원 수와 고유 ID', () => {
-  assert.equal(C.unitsOfGrade(1).length, 10);
-  assert.equal(C.unitsOfGrade(2).length, 11);
-  assert.equal(C.unitsOfGrade(3).length, 8);
+  assert.deepEqual(C.GRADES.map(g => g.label), ['초1', '초2', '초3', '초4', '초5', '초6', '중1', '중2', '중3']);
+  assert.equal(C.unitsOfGrade('m1').length, 10);
+  assert.equal(C.unitsOfGrade('m2').length, 11);
+  assert.equal(C.unitsOfGrade('m3').length, 8);
+  ['e1', 'e2', 'e3', 'e4', 'e5', 'e6'].forEach(g => assert.ok(C.unitsOfGrade(g).length >= 11, g + ' 단원 수'));
+  assert.equal(C.unitLabel('e5-02'), '초5 약수와 배수');
+  assert.equal(C.unitLabel('e6-04'), '초6 비와 비율');
   const ids = C.UNITS.map(u => u.id);
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(C.unitName('m2-04'), '연립일차방정식');
@@ -29,13 +33,13 @@ test('날짜 유틸', () => {
 test('학생 정규화: 이름 필수, 학년 범위 보정, 잘못된 값 정리', () => {
   assert.throws(() => C.createStudent({ name: '  ' }), /이름/);
   const s = C.createStudent({
-    name: ' 홍길동 ', grade: 7,
+    name: ' 홍길동 ', grade: 3,
     progress: { 'm3-01': { status: 'done', level: 9 }, 'bad-id': { status: 'done' } },
     tests: [{ date: '2026-10-02', score: 130, total: 100, type: '없는유형' }, { date: 'oops', score: 50 }],
     wrongs: [{ unitId: 'm3-01', type: '계산 실수' }]
   });
   assert.equal(s.name, '홍길동');
-  assert.equal(s.grade, 3);
+  assert.equal(s.grade, 'm3', '예전 숫자 학년 3 → 중3');
   assert.deepEqual(Object.keys(s.progress), ['m3-01']);
   assert.equal(s.progress['m3-01'].level, 5);
   assert.equal(s.tests[0].score, 100, '만점 초과 점수는 만점으로 보정');
@@ -54,12 +58,13 @@ test('백업 가져오기: 형식 검사와 중복 ID 처리', () => {
 test('진도 요약', () => {
   const s = student({ progress: { 'm2-01': { status: 'done' }, 'm2-02': { status: 'done' }, 'm2-03': { status: 'doing', level: 3 }, 'm1-01': { status: 'done' } } });
   const p = C.progressSummary(s);
+  assert.equal(p.grade, 'm2');
   assert.equal(p.total, 11);
   assert.equal(p.done, 2);
   assert.equal(p.doing, 1);
   assert.equal(p.rate, 18);
   assert.deepEqual(p.doingNames, ['일차부등식']);
-  assert.equal(C.progressSummary(s, 1).done, 1, '다른 학년 진도는 따로 집계');
+  assert.equal(C.progressSummary(s, 'm1').done, 1, '다른 학년 진도는 따로 집계');
 });
 
 test('평가 통계: 평균, 최근 3회, 추세', () => {
@@ -151,13 +156,45 @@ test('리포트 생성: 섹션과 문자 메시지 텍스트', () => {
 
 test('샘플 데이터와 대시보드', () => {
   const db = C.sampleDB(TODAY);
-  assert.equal(db.students.length, 4);
+  assert.equal(db.students.length, 6);
+  assert.deepEqual(db.students.map(s => C.schoolOf(s.grade)).filter(x => x === 'elem').length, 2, '초등 샘플 2명');
   const again = C.sampleDB(TODAY);
   assert.deepEqual(db, again, '시드 고정으로 항상 같은 샘플');
   const d = C.dashboard(db, TODAY);
-  assert.equal(d.count, 4);
+  assert.equal(d.count, 6);
   assert.ok(d.avgProgress > 0 && d.avgProgress <= 100);
   assert.ok(d.attention.length >= 1);
   assert.ok(d.attention.some(r => r.student.name === '박지호'), '성적 하락 + 결석 학생이 관리 대상');
   assert.deepEqual(C.normalizeDB(JSON.parse(JSON.stringify(db))), db, '백업 → 복원 왕복 시 데이터 유지');
+});
+
+test('학년 코드: 예전 데이터 호환과 입력 변환', () => {
+  assert.equal(C.normalizeGrade(2), 'm2');
+  assert.equal(C.normalizeGrade('1'), 'm1');
+  assert.equal(C.normalizeGrade('e4'), 'e4');
+  assert.equal(C.normalizeGrade('초6'), 'e6');
+  assert.equal(C.normalizeGrade('중 3'), 'm3');
+  assert.equal(C.normalizeGrade('e9'), 'm1', '알 수 없는 값은 기본값');
+  assert.equal(C.gradeLabel('e2'), '초2');
+  assert.ok(C.gradeOrder('e6') < C.gradeOrder('m1'));
+  // v1 백업(숫자 학년, m단원 ID)이 그대로 열리는지
+  const old = C.normalizeDB({ students: [{ id: 'x', name: '옛학생', grade: 2, progress: { 'm2-01': { status: 'done' } } }] });
+  assert.equal(old.students[0].grade, 'm2');
+  assert.equal(C.progressSummary(old.students[0]).done, 1);
+});
+
+test('초등 학생: 진도·리포트·취약 단원', () => {
+  const s = C.createStudent({
+    name: '초등이', grade: 'e5',
+    progress: { 'e5-01': { status: 'done' }, 'e5-02': { status: 'doing', level: 2 } },
+    tests: [{ date: '2026-10-01', unitId: 'e5-02', score: 60 }],
+    wrongs: [{ unitId: 'e5-02', type: '계산 실수' }]
+  });
+  const p = C.progressSummary(s);
+  assert.equal(p.total, 12);
+  assert.equal(p.done, 1);
+  assert.equal(C.weakUnits(s)[0].label, '초5 약수와 배수');
+  const r = C.buildReport(s, TODAY);
+  assert.match(r.text, /초5 과정 12단원 중 1단원 완료 \(8%\), 진행 중: 약수와 배수/);
+  assert.match(r.text, /약수와 배수 단원을 우선 복습/);
 });
