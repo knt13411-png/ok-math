@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OK수학 · 중등 수학 개인별 관리</title>
+  <meta name="description" content="중학생 한 명 한 명의 진도, 평가, 오답, 출결을 기록하고 학부모 리포트까지 만드는 OK수학 학습 관리 웹앱">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232f6bff'/%3E%3Ctext x='32' y='43' font-size='30' font-weight='700' text-anchor='middle' fill='white' font-family='sans-serif'%3EOK%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <a class="brand" href="#/dashboard"><span class="logo">OK</span><span>OK수학<small>중등 수학 개인별 관리</small></span></a>
+      <nav class="nav">
+        <a href="#/dashboard" data-nav="dashboard">대시보드</a>
+        <a href="#/students" data-nav="students">학생 관리</a>
+        <a href="#/data" data-nav="data">데이터 관리</a>
+      </nav>
+      <p class="side-note">데이터는 이 브라우저에만 저장됩니다.<br>정기적으로 백업해 주세요.</p>
+    </aside>
+    <main id="app" class="main" tabindex="-1"></main>
+  </div>
+
+  <dialog id="modal">
+    <form id="modalForm" method="dialog" novalidate>
+      <h2 id="modalTitle"></h2>
+      <div id="modalBody" class="form-grid"></div>
+      <p id="modalError" class="form-error" role="alert"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-close>취소</button>
+        <button type="submit" class="btn primary" id="modalSubmit">저장</button>
+      </div>
+    </form>
+  </dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="core.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

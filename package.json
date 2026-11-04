@@ -1,0 +1,10 @@
+{
+  "name": "ok-math",
+  "version": "1.0.0",
+  "description": "OK수학 - 중등 수학 개인별 학습 관리 웹앱",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test tests/"
+  }
+}
